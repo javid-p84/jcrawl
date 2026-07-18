@@ -1,12 +1,13 @@
 # jcrawl
 
-A Go service that monitors online calendars and automatically books available slots.
+A Go service that monitors online availability and automatically books items based on your preferences. Supports a variety of booking types (appointments, reservations, tickets, etc.).
 
 ## Features
 
-- Monitor calendar availability
-- Auto-book when slots become available
-- Configurable scheduling
+- Monitor multiple online booking platforms
+- Auto-book when availability matches your preferences
+- Customizable booking preferences and filters
+- Support for various booking types and services
 
 ## Getting Started
 
