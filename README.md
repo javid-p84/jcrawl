@@ -132,11 +132,55 @@ curl http://localhost:8080/api/v1/preferences \
 - `pkg/worker/` - Background job for availability checks
 - `pkg/config/` - Configuration management
 
+## How It Works
+
+### 1. User Creates Preference
+User provides:
+- Google Maps link to restaurant
+- Date range (e.g., Jan 1-31)
+- Day preferences (e.g., Fri/Sat only)
+- Party size (e.g., 2 people)
+
+### 2. Background Worker Monitors
+Every 5 minutes, the worker:
+- Fetches all active user preferences
+- For each preference, checks each date matching day preferences
+- Uses Chrome/Chromium to load the restaurant booking page
+- Parses the HTML to extract available time slots
+- Stores found availabilities in database
+
+### 3. Parser Handles Multiple Platforms
+Supports various booking platforms:
+- **Resy** - Extracts from `data-time` attributes
+- **OpenTable** - Parses availability buttons
+- **Google Reserve** - Handles button-based slots
+- **Generic** - Fallback pattern matching for times
+
+### 4. Auto-Booking (Coming Soon)
+When availability is found, can automatically:
+- Book the preferred time slot
+- Send confirmation details to user
+- Store booking record
+
+## Scraping Technology
+
+Uses **chromedp** for browser automation:
+- Headless Chrome/Chromium
+- Handles JavaScript-heavy booking pages
+- Waits for dynamic content to load
+- Extracts full page HTML
+
+**Requirements:**
+- Chrome or Chromium installed on system
+- Linux: `sudo apt-get install chromium-browser`
+- macOS: `brew install chromium` or use system Chrome
+- Windows: Download from chromium.woolyss.com
+
 ## Next Steps
 
 - [ ] Implement JWT authentication
-- [ ] Add restaurant availability scraping/parsing
 - [ ] Implement auto-booking logic
 - [ ] Add email/Slack notifications
+- [ ] Add support for direct restaurant APIs
 - [ ] Create web dashboard
-- [ ] Add support for more booking types
+- [ ] Add support for appointment-based bookings (dentist, doctor, etc.)
