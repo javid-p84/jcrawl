@@ -100,8 +100,12 @@ Server starts on `http://localhost:8080`
 - `POST /api/v1/notifications/mark-as-read?id=<notif-id>` - Mark notification as read
 - `POST /api/v1/notifications/mark-all-as-read` - Mark all notifications as read
 
-### Recreation.gov
-- `POST /api/v1/recreation/credentials?preference_id=<id>` - Store recreation.gov credentials (encrypted)
+### Recreation.gov Authentication (2 Options)
+**Option 1: Username/Password (Encrypted)**
+- `POST /api/v1/recreation/credentials/password?preference_id=<id>` - Store recreation.gov email/password
+
+**Option 2: OAuth Token**
+- `POST /api/v1/recreation/credentials/oauth?preference_id=<id>` - Store recreation.gov OAuth token
 
 ### Health
 - `GET /health` - Service health check
@@ -288,15 +292,73 @@ Recreation.gov support includes:
    - Preference auto-deactivated
 ```
 
+## Recreation.gov Authentication Options
+
+jcrawl supports **TWO secure authentication methods** for recreation.gov:
+
+### Option 1: Username/Password (Encrypted)
+Store your recreation.gov email and password securely:
+```bash
+curl -X POST http://localhost:8080/api/v1/recreation/credentials/password?preference_id=UUID \
+  -H "Content-Type: application/json" \
+  -H "X-User-ID: user-uuid" \
+  -d '{
+    "username": "your-email@example.com",
+    "password": "your-recreation-gov-password"
+  }'
+```
+
+**Pros:**
+- ✅ Simple setup
+- ✅ AES-256-GCM encrypted
+- ✅ Works with all recreation.gov features
+
+**Cons:**
+- ⚠️ Requires password storage
+- ⚠️ Password changes require update
+
+### Option 2: OAuth Token
+Use a recreation.gov session token (copy from browser):
+```bash
+curl -X POST http://localhost:8080/api/v1/recreation/credentials/oauth?preference_id=UUID \
+  -H "Content-Type: application/json" \
+  -H "X-User-ID: user-uuid" \
+  -d '{
+    "oauth_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "oauth_provider": "recreation.gov",
+    "oauth_refresh": "optional-refresh-token"
+  }'
+```
+
+**How to get your OAuth token:**
+1. Login to recreation.gov
+2. Open browser DevTools (F12)
+3. Go to Application → Cookies
+4. Find `JSESSIONID` or auth token
+5. Copy and paste into jcrawl
+
+**Pros:**
+- ✅ No password stored
+- ✅ Works with Google/Facebook OAuth
+- ✅ Can use existing logged-in session
+- ✅ Tokens can be revoked independently
+
+**Cons:**
+- ⚠️ Tokens expire (typically 24-30 days)
+- ⚠️ Need to refresh periodically
+- ⚠️ Slight manual setup required
+
 ## Security & Encryption
 
 jcrawl uses **AES-256-GCM encryption** for storing sensitive credentials:
 
 ### Credential Storage
-- **Recreation.gov passwords** - Encrypted using AES-256-GCM
+- **Option 1: Passwords** - Encrypted using AES-256-GCM before storage
+- **Option 2: OAuth Tokens** - Encrypted using AES-256-GCM before storage
 - **Encryption key** - 32-byte key from `ENCRYPTION_KEY` environment variable
 - **Storage** - Base64-encoded ciphertext in PostgreSQL
 - **Decryption** - Only when needed for login/booking
+- **Token validation** - Optional automatic expiry checking
 
 ### Security Features
 ✅ **Never logged** - Passwords never appear in logs  

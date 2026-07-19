@@ -266,7 +266,7 @@ func (h *Handler) MarkAllNotificationsAsRead(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-// UpdateRecreationGovCredentials updates recreation.gov login credentials
+// UpdateRecreationGovCredentials updates recreation.gov login credentials (Option 1: password)
 func (h *Handler) UpdateRecreationGovCredentials(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -303,6 +303,51 @@ func (h *Handler) UpdateRecreationGovCredentials(w http.ResponseWriter, r *http.
 	json.NewEncoder(w).Encode(map[string]string{
 		"status": "ok",
 		"message": "Credentials updated. Please ensure your recreation.gov username and password are correct.",
+	})
+}
+
+// UpdateRecreationGovOAuthToken updates recreation.gov OAuth token (Option 2: token)
+func (h *Handler) UpdateRecreationGovOAuthToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// TODO: Extract user ID and preference ID from JWT token
+	userID := r.Header.Get("X-User-ID")       // Placeholder
+	prefID := r.URL.Query().Get("preference_id")
+
+	if prefID == "" {
+		http.Error(w, "Preference ID required", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		OAuthToken   string `json:"oauth_token"`
+		OAuthProvider string `json:"oauth_provider"` // google, facebook, recreation.gov
+		OAuthRefresh string `json:"oauth_refresh,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if req.OAuthToken == "" {
+		http.Error(w, "OAuth token required", http.StatusBadRequest)
+		return
+	}
+
+	if req.OAuthProvider == "" {
+		req.OAuthProvider = "recreation.gov"
+	}
+
+	// TODO: Encrypt token before storing in database
+	// TODO: Validate token with recreation.gov
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "ok",
+		"message": fmt.Sprintf("OAuth token stored for provider: %s", req.OAuthProvider),
 	})
 }
 

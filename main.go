@@ -87,6 +87,10 @@ func main() {
 	router.HandleFunc("/api/v1/notifications/mark-as-read", apiHandler.MarkNotificationAsRead).Methods("POST")
 	router.HandleFunc("/api/v1/notifications/mark-all-as-read", apiHandler.MarkAllNotificationsAsRead).Methods("POST")
 
+	// Recreation.gov credentials endpoints
+	router.HandleFunc("/api/v1/recreation/credentials/password", apiHandler.UpdateRecreationGovCredentials).Methods("POST")
+	router.HandleFunc("/api/v1/recreation/credentials/oauth", apiHandler.UpdateRecreationGovOAuthToken).Methods("POST")
+
 	// Setup HTTP server
 	server := &http.Server{
 		Addr:         ":8080",

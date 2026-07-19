@@ -13,16 +13,27 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
+var _ = fmt.Sprintf // Ensure fmt is imported
+
 type SessionManager struct {
-	client     *http.Client
-	username   string
-	password   string
-	isLoggedIn bool
+	client      *http.Client
+	username    string
+	password    string
+	oauthToken  string
+	oauthMgr    *OAuthManager
+	authMethod  AuthMethod
+	isLoggedIn  bool
 }
 
-// NewSessionManager creates a new recreation.gov session manager
+type AuthMethod string
+
+const (
+	AuthMethodPassword AuthMethod = "password"
+	AuthMethodOAuth    AuthMethod = "oauth"
+)
+
+// NewSessionManager creates a new recreation.gov session manager with password auth
 func NewSessionManager(username, password string) *SessionManager {
-	// Create a cookie jar to maintain session
 	jar, _ := cookiejar.New()
 
 	client := &http.Client{
@@ -34,13 +45,35 @@ func NewSessionManager(username, password string) *SessionManager {
 		client:     client,
 		username:   username,
 		password:   password,
+		authMethod: AuthMethodPassword,
 		isLoggedIn: false,
 	}
 }
 
-// Login authenticates with recreation.gov using browser automation
+// NewOAuthSessionManager creates a new recreation.gov session manager with OAuth token
+func NewOAuthSessionManager(token string) *SessionManager {
+	oauthMgr := NewOAuthManager(token)
+
+	return &SessionManager{
+		client:     oauthMgr.client,
+		oauthToken: token,
+		oauthMgr:   oauthMgr,
+		authMethod: AuthMethodOAuth,
+		isLoggedIn: false,
+	}
+}
+
+// Login authenticates with recreation.gov (password or OAuth)
 // Returns error if login fails
 func (sm *SessionManager) Login(ctx context.Context) error {
+	if sm.authMethod == AuthMethodOAuth {
+		return sm.LoginWithOAuth(ctx)
+	}
+	return sm.LoginWithPassword(ctx)
+}
+
+// LoginWithPassword authenticates using username/password
+func (sm *SessionManager) LoginWithPassword(ctx context.Context) error {
 	log.Printf("Logging into recreation.gov as %s\n", sm.username)
 
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
@@ -167,11 +200,43 @@ func (sm *SessionManager) ValidateCredentials(ctx context.Context) error {
 	return nil
 }
 
+// LoginWithOAuth authenticates using OAuth token
+func (sm *SessionManager) LoginWithOAuth(ctx context.Context) error {
+	if sm.oauthMgr == nil {
+		return fmt.Errorf("oauth manager not initialized")
+	}
+
+	log.Println("Validating OAuth token...")
+
+	isValid, err := sm.oauthMgr.ValidateToken(ctx)
+	if err != nil {
+		return fmt.Errorf("oauth token validation failed: %w", err)
+	}
+
+	if !isValid {
+		return fmt.Errorf("oauth token is invalid")
+	}
+
+	sm.isLoggedIn = true
+	log.Println("Successfully authenticated with OAuth token")
+	return nil
+}
+
+// GetOAuthManager returns the OAuth manager for token-based operations
+func (sm *SessionManager) GetOAuthManager() *OAuthManager {
+	return sm.oauthMgr
+}
+
+// IsUsingOAuth returns whether this session is using OAuth authentication
+func (sm *SessionManager) IsUsingOAuth() bool {
+	return sm.authMethod == AuthMethodOAuth
+}
+
 // Logout clears the session
 func (sm *SessionManager) Logout() {
 	sm.isLoggedIn = false
-	// Clear cookies
-	if sm.client.Jar != nil {
+	// Clear cookies if using password auth
+	if sm.authMethod == AuthMethodPassword && sm.client.Jar != nil {
 		sm.client.Jar.(*cookiejar.Jar).RemoveAll()
 	}
 	log.Println("Logged out from recreation.gov")
