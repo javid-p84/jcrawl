@@ -1,68 +1,142 @@
 # jcrawl
 
-A Go service that monitors online availability and automatically books items based on your preferences. Supports a variety of booking types (restaurant reservations, appointments, tickets, etc.).
+A multi-user Go service that monitors online availability and automatically books items based on user preferences. Currently supports restaurant reservations via Google Maps.
 
 ## Features
 
-- Monitor restaurant availability from Google Maps
-- Check every 5 minutes (configurable)
-- Auto-book when availability matches your preferences
-- Filter by date range and day of week
-- Support for party size preferences
-- Graceful shutdown and error handling
+- **Multi-user support** - Multiple users with isolated preferences and bookings
+- **Restaurant monitoring** - Check Google Maps restaurant availability
+- **Background worker** - Checks availability every 5 minutes across all users
+- **REST API** - Full API for user registration, preference management, and booking history
+- **Database storage** - PostgreSQL for persistent, scalable data storage
+- **Auto-booking** - Automatically books when availability matches preferences
+- **Date/day filtering** - Filter by date range and day of week preferences
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    REST API                         │
+│  (Register, Login, Preferences, Bookings)           │
+└────────────────────┬────────────────────────────────┘
+                     │
+                     ▼
+        ┌────────────────────────┐
+        │   HTTP Server (8080)   │
+        └────────────┬───────────┘
+                     │
+        ┌────────────┴───────────┐
+        ▼                        ▼
+  ┌─────────────┐         ┌──────────────┐
+  │ PostgreSQL  │         │   Worker     │
+  │ Database    │         │ (5min check) │
+  └─────────────┘         └──────┬───────┘
+                                 │
+                                 ▼
+                        ┌──────────────────┐
+                        │ Restaurant Check │
+                        │   + Auto-Book    │
+                        └──────────────────┘
+```
 
 ## Getting Started
 
 ### Prerequisites
 
-- Go 1.21 or later
+- Go 1.21+
+- PostgreSQL 12+
 
-### Build
+### Installation
 
+1. Clone the repository:
 ```bash
-go build -o jcrawl
+git clone https://github.com/javid-p84/jcrawl.git
+cd jcrawl
 ```
 
-### Configuration
+2. Install dependencies:
+```bash
+go mod download
+```
 
-Copy `.env.example` to `.env` and update with your preferences:
-
+3. Set up environment:
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with:
-- `RESTAURANT_GOOGLE_LINK`: Google Maps link to the restaurant
-- `RESTAURANT_PARTY_SIZE`: Number of people in your party
-- `DATE_RANGE_FROM` and `DATE_RANGE_TO`: When you want to book (YYYY-MM-DD format)
-- `DAY_PREFERENCE`: Preferred days (0=Sunday, 1=Monday, ..., 6=Saturday)
-- `CHECK_INTERVAL_MINUTES`: How often to check availability (default: 5)
-- `AUTO_BOOK`: Auto-book when availability is found (default: true)
+4. Configure PostgreSQL connection in `.env`:
+```
+DATABASE_URL=postgres://user:password@localhost:5432/jcrawl?sslmode=disable
+```
 
-### Run
-
+5. Build:
 ```bash
-export $(cat .env | xargs)
+go build -o jcrawl
+```
+
+6. Run:
+```bash
 ./jcrawl
 ```
 
-Or with Go:
+Server starts on `http://localhost:8080`
+
+## API Endpoints
+
+### Authentication
+- `POST /api/v1/auth/register` - Create new account
+- `POST /api/v1/auth/login` - Login and get token
+
+### Preferences
+- `POST /api/v1/preferences` - Create monitoring preference
+- `GET /api/v1/preferences` - List user's preferences
+
+### Bookings
+- `GET /api/v1/bookings` - List user's booking history
+
+### Health
+- `GET /health` - Service health check
+
+## Example Usage
 
 ```bash
-export $(cat .env | xargs)
-go run main.go
+# Register
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"secure123"}'
+
+# Add restaurant preference
+curl -X POST http://localhost:8080/api/v1/preferences \
+  -H "Content-Type: application/json" \
+  -H "X-User-ID: <user-id>" \
+  -d '{
+    "google_link": "https://www.google.com/maps/...",
+    "restaurant_name": "Restaurant Name",
+    "date_range_from": "2024-01-01",
+    "date_range_to": "2024-01-31",
+    "day_preference": [5, 6],
+    "party_size": 2
+  }'
+
+# Get preferences
+curl http://localhost:8080/api/v1/preferences \
+  -H "X-User-ID: <user-id>"
 ```
 
-## Development
+## Project Structure
 
-```bash
-go mod tidy
-go run main.go
-```
-
-## Architecture
-
-- `pkg/models/` - Data structures for preferences and availability
+- `pkg/models/` - Data structures (User, Preferences, Bookings)
+- `pkg/db/` - Database layer (repositories, schema)
+- `pkg/api/` - HTTP handlers and routes
 - `pkg/restaurant/` - Restaurant availability checking
-- `pkg/scheduler/` - Scheduling and monitoring logic
+- `pkg/worker/` - Background job for availability checks
 - `pkg/config/` - Configuration management
+
+## Next Steps
+
+- [ ] Implement JWT authentication
+- [ ] Add restaurant availability scraping/parsing
+- [ ] Implement auto-booking logic
+- [ ] Add email/Slack notifications
+- [ ] Create web dashboard
+- [ ] Add support for more booking types
