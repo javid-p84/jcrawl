@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/db"
@@ -14,13 +15,15 @@ type Handler struct {
 	userRepo  *db.UserRepository
 	prefRepo  *db.PreferenceRepository
 	bookRepo  *db.BookingRepository
+	notifRepo *db.NotificationRepository
 }
 
-func NewHandler(userRepo *db.UserRepository, prefRepo *db.PreferenceRepository, bookRepo *db.BookingRepository) *Handler {
+func NewHandler(userRepo *db.UserRepository, prefRepo *db.PreferenceRepository, bookRepo *db.BookingRepository, notifRepo *db.NotificationRepository) *Handler {
 	return &Handler{
-		userRepo: userRepo,
-		prefRepo: prefRepo,
-		bookRepo: bookRepo,
+		userRepo:  userRepo,
+		prefRepo:  prefRepo,
+		bookRepo:  bookRepo,
+		notifRepo: notifRepo,
 	}
 }
 
@@ -166,6 +169,101 @@ func (h *Handler) GetBookings(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(bookings)
+}
+
+// GetNotifications retrieves notifications for a user
+func (h *Handler) GetNotifications(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// TODO: Extract user ID from JWT token
+	userID := r.Header.Get("X-User-ID") // Placeholder
+
+	// Get query parameters for pagination
+	limit := 20
+	offset := 0
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsedL, err := strconv.Atoi(l); err == nil && parsedL > 0 && parsedL <= 100 {
+			limit = parsedL
+		}
+	}
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if parsedO, err := strconv.Atoi(o); err == nil && parsedO >= 0 {
+			offset = parsedO
+		}
+	}
+
+	notifs, err := h.notifRepo.GetNotificationsByUserID(userID, limit, offset)
+	if err != nil {
+		http.Error(w, "Failed to fetch notifications", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(notifs)
+}
+
+// GetUnreadNotificationCount returns count of unread notifications
+func (h *Handler) GetUnreadNotificationCount(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// TODO: Extract user ID from JWT token
+	userID := r.Header.Get("X-User-ID") // Placeholder
+
+	count, err := h.notifRepo.GetUnreadCount(userID)
+	if err != nil {
+		http.Error(w, "Failed to fetch unread count", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"unread_count": count})
+}
+
+// MarkNotificationAsRead marks a notification as read
+func (h *Handler) MarkNotificationAsRead(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	notifID := r.URL.Query().Get("id")
+	if notifID == "" {
+		http.Error(w, "Notification ID required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.notifRepo.MarkAsRead(notifID); err != nil {
+		http.Error(w, "Failed to update notification", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// MarkAllNotificationsAsRead marks all notifications as read
+func (h *Handler) MarkAllNotificationsAsRead(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// TODO: Extract user ID from JWT token
+	userID := r.Header.Get("X-User-ID") // Placeholder
+
+	if err := h.notifRepo.MarkAllAsRead(userID); err != nil {
+		http.Error(w, "Failed to update notifications", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // Health check endpoint

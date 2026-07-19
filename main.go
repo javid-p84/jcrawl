@@ -46,6 +46,7 @@ func main() {
 	userRepo := db.NewUserRepository(database)
 	prefRepo := db.NewPreferenceRepository(database)
 	bookRepo := db.NewBookingRepository(database)
+	notifRepo := db.NewNotificationRepository(database)
 
 	// Initialize services
 	checker := restaurant.NewChecker()
@@ -54,7 +55,7 @@ func main() {
 		log.Printf("Warning: Failed to initialize booker: %v\n", err)
 	}
 	checkWorker := worker.NewCheckWorker(prefRepo, bookRepo, checker, bookr, 5*time.Minute)
-	apiHandler := api.NewHandler(userRepo, prefRepo, bookRepo)
+	apiHandler := api.NewHandler(userRepo, prefRepo, bookRepo, notifRepo)
 
 	// Setup routes
 	router := mux.NewRouter()
@@ -72,6 +73,12 @@ func main() {
 
 	// Booking endpoints
 	router.HandleFunc("/api/v1/bookings", apiHandler.GetBookings).Methods("GET")
+
+	// Notification endpoints
+	router.HandleFunc("/api/v1/notifications", apiHandler.GetNotifications).Methods("GET")
+	router.HandleFunc("/api/v1/notifications/unread-count", apiHandler.GetUnreadNotificationCount).Methods("GET")
+	router.HandleFunc("/api/v1/notifications/mark-as-read", apiHandler.MarkNotificationAsRead).Methods("POST")
+	router.HandleFunc("/api/v1/notifications/mark-all-as-read", apiHandler.MarkAllNotificationsAsRead).Methods("POST")
 
 	// Setup HTTP server
 	server := &http.Server{

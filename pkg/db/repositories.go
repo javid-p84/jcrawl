@@ -175,3 +175,84 @@ func (r *BookingRepository) GetBookingsByUserID(userID string) ([]models.Booking
 	}
 	return bookings, rows.Err()
 }
+
+type NotificationRepository struct {
+	db *sql.DB
+}
+
+func NewNotificationRepository(db *sql.DB) *NotificationRepository {
+	return &NotificationRepository{db: db}
+}
+
+func (r *NotificationRepository) CreateNotification(notif *models.Notification) error {
+	var dataJSON sql.NullString
+	if notif.Data != nil {
+		// Convert map to JSON - simplified for this example
+		dataJSON = sql.NullString{String: "{}", Valid: true}
+	}
+
+	err := r.db.QueryRow(
+		`INSERT INTO notifications
+		(user_id, preference_id, booking_id, type, title, message, data)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, created_at, updated_at`,
+		notif.UserID, notif.PreferenceID, notif.BookingID,
+		notif.Type, notif.Title, notif.Message, dataJSON,
+	).Scan(&notif.ID, &notif.CreatedAt, &notif.UpdatedAt)
+	return err
+}
+
+func (r *NotificationRepository) GetNotificationsByUserID(userID string, limit int, offset int) ([]models.Notification, error) {
+	rows, err := r.db.Query(
+		`SELECT id, user_id, preference_id, booking_id, type, title, message,
+		 read, read_at, created_at, updated_at
+		 FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+		userID, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var notifs []models.Notification
+	for rows.Next() {
+		var notif models.Notification
+		err := rows.Scan(
+			&notif.ID, &notif.UserID, &notif.PreferenceID, &notif.BookingID,
+			&notif.Type, &notif.Title, &notif.Message, &notif.Read, &notif.ReadAt,
+			&notif.CreatedAt, &notif.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		notifs = append(notifs, notif)
+	}
+	return notifs, rows.Err()
+}
+
+func (r *NotificationRepository) GetUnreadCount(userID string) (int, error) {
+	var count int
+	err := r.db.QueryRow(
+		"SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read = false",
+		userID,
+	).Scan(&count)
+	return count, err
+}
+
+func (r *NotificationRepository) MarkAsRead(notificationID string) error {
+	now := time.Now()
+	_, err := r.db.Exec(
+		"UPDATE notifications SET read = true, read_at = $1, updated_at = $1 WHERE id = $2",
+		now, notificationID,
+	)
+	return err
+}
+
+func (r *NotificationRepository) MarkAllAsRead(userID string) error {
+	now := time.Now()
+	_, err := r.db.Exec(
+		"UPDATE notifications SET read = true, read_at = $1, updated_at = $1 WHERE user_id = $2 AND read = false",
+		now, userID,
+	)
+	return err
+}

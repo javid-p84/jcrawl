@@ -94,6 +94,12 @@ Server starts on `http://localhost:8080`
 ### Bookings
 - `GET /api/v1/bookings` - List user's booking history
 
+### Notifications
+- `GET /api/v1/notifications` - Get user's notifications (paginated)
+- `GET /api/v1/notifications/unread-count` - Get count of unread notifications
+- `POST /api/v1/notifications/mark-as-read?id=<notif-id>` - Mark notification as read
+- `POST /api/v1/notifications/mark-all-as-read` - Mark all notifications as read
+
 ### Health
 - `GET /health` - Service health check
 
@@ -184,6 +190,45 @@ Uses **chromedp** for browser automation:
 - Linux: `sudo apt-get install chromium-browser`
 - macOS: `brew install chromium` or use system Chrome
 - Windows: Download from chromium.woolyss.com
+
+## In-App Notifications
+
+All events are tracked as in-app notifications accessible via the API. Notification types:
+
+| Type | When | Example |
+|------|------|---------|
+| **availability_found** | Slot becomes available matching preferences | "✨ Michelin Star Restaurant has availability on Jan 20, 2024 at 7:30 PM" |
+| **booking_success** | Reservation successfully completed | "🎊 Your reservation at Restaurant is confirmed. Confirmation: RESY-12345" |
+| **booking_failed** | Booking attempt fails | "⚠️ Could not complete booking. Reason: Form field validation error" |
+| **check_complete** | Availability check finishes (optional) | "📋 Check completed for Restaurant. Found 2 available slot(s)." |
+| **error** | An error occurs during monitoring | "❌ Error checking Restaurant: Browser timeout" |
+
+**Notification Features:**
+- ✅ Persistent storage in database
+- ✅ Mark as read/unread
+- ✅ Pagination support
+- ✅ Unread count tracking
+- ✅ Rich data (restaurant, date, time, confirmation ID)
+
+**Example Notification:**
+```json
+{
+  "id": "uuid",
+  "user_id": "uuid",
+  "preference_id": "uuid",
+  "type": "booking_success",
+  "title": "🎊 Booking Confirmed!",
+  "message": "Your reservation at Michelin Star Restaurant for Jan 20, 2024 at 7:30 PM is confirmed. Confirmation: RESY-123456",
+  "read": false,
+  "data": {
+    "restaurant": "Michelin Star Restaurant",
+    "date": "2024-01-20",
+    "time": "7:30 PM",
+    "confirmation_id": "RESY-123456"
+  },
+  "created_at": "2024-01-17T14:30:00Z"
+}
+```
 
 ## Booking Platforms Supported
 

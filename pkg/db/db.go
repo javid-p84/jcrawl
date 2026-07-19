@@ -71,9 +71,27 @@ func InitializeSchema(db *sql.DB) error {
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
 
+	CREATE TABLE IF NOT EXISTS notifications (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		preference_id UUID REFERENCES user_preferences(id) ON DELETE SET NULL,
+		booking_id UUID REFERENCES booking_history(id) ON DELETE SET NULL,
+		type VARCHAR(50) NOT NULL,
+		title VARCHAR(255) NOT NULL,
+		message TEXT NOT NULL,
+		data JSONB,
+		read BOOLEAN DEFAULT false,
+		read_at TIMESTAMP,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_user_preferences_user_id ON user_preferences(user_id);
 	CREATE INDEX IF NOT EXISTS idx_booking_history_user_id ON booking_history(user_id);
 	CREATE INDEX IF NOT EXISTS idx_booking_history_preference_id ON booking_history(preference_id);
+	CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+	CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+	CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, read);
 	`
 
 	_, err := db.Exec(schema)
