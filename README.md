@@ -1,6 +1,50 @@
-# jcrawl
+# jcrawl 🎯
 
-A multi-user Go service that monitors online availability and automatically books items based on user preferences. Currently supports restaurant reservations via Google Maps.
+**Automated booking service** that monitors availability and books campsites, restaurants, and more based on your preferences.
+
+## ⚡ Quick Start (3 Steps)
+
+### Option 1: Docker (Recommended - Easiest)
+
+**Requirements:** Docker & Docker Compose
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/javid-p84/jcrawl.git
+cd jcrawl
+
+# 2. Start the app
+docker-compose up
+
+# 3. Visit http://localhost:8080
+```
+
+✅ **That's it!** Database initializes automatically.
+
+### Option 2: Local Development
+
+**Requirements:** Go 1.21+, PostgreSQL 12+, Chrome/Chromium
+
+```bash
+# 1. Clone and setup
+git clone https://github.com/javid-p84/jcrawl.git
+cd jcrawl
+cp .env.example .env
+
+# 2. Update .env with your database URL
+# DATABASE_URL=postgres://user:password@localhost:5432/jcrawl?sslmode=disable
+
+# 3. Run
+go run main.go
+
+# 4. Visit http://localhost:8080
+```
+
+---
+
+## 📖 Overview
+
+A multi-user Go service that monitors online availability and automatically books items based on user preferences. Currently supports restaurant reservations via Google Maps and recreation.gov campground bookings.
 
 ## Features
 
@@ -95,6 +139,92 @@ go build -o jcrawl
 ```
 
 Server starts on `http://localhost:8080`
+
+## How to Use
+
+### 1. Register & Login
+
+```bash
+# Register
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "secure_password"
+  }'
+
+# Login
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "secure_password"
+  }'
+```
+
+### 2. Create a Preference (Example: Recreation.gov)
+
+**Option A: Notifications Only (No Login Required)**
+```bash
+curl -X POST http://localhost:8080/api/v1/preferences \
+  -H "Content-Type: application/json" \
+  -H "X-User-ID: your-user-id" \
+  -d '{
+    "google_link": "https://www.recreation.gov/camping/campgrounds/232447/",
+    "restaurant_name": "Yosemite Valley Campground",
+    "date_range_from": "2024-07-01",
+    "date_range_to": "2024-07-31",
+    "day_preference": [5, 6],
+    "party_size": 4,
+    "notify_only": true,
+    "auto_book": false
+  }'
+```
+
+**Option B: Auto-Book with Password**
+```bash
+curl -X POST http://localhost:8080/api/v1/recreation/credentials/password?preference_id=PREF_UUID \
+  -H "Content-Type: application/json" \
+  -H "X-User-ID: your-user-id" \
+  -d '{
+    "username": "your-email@example.com",
+    "password": "your-recreation-gov-password"
+  }'
+```
+
+**Option C: Auto-Book with OAuth Token**
+```bash
+curl -X POST http://localhost:8080/api/v1/recreation/credentials/oauth?preference_id=PREF_UUID \
+  -H "Content-Type: application/json" \
+  -H "X-User-ID: your-user-id" \
+  -d '{
+    "oauth_token": "your-session-token",
+    "oauth_provider": "recreation.gov"
+  }'
+```
+
+### 3. Check Notifications
+
+```bash
+# Get all notifications
+curl http://localhost:8080/api/v1/notifications \
+  -H "X-User-ID: your-user-id"
+
+# Get unread count
+curl http://localhost:8080/api/v1/notifications/unread-count \
+  -H "X-User-ID: your-user-id"
+
+# Mark as read
+curl -X POST http://localhost:8080/api/v1/notifications/mark-as-read?id=NOTIF_UUID \
+  -H "X-User-ID: your-user-id"
+```
+
+### 4. View Bookings
+
+```bash
+curl http://localhost:8080/api/v1/bookings \
+  -H "X-User-ID: your-user-id"
+```
 
 ## API Endpoints
 
@@ -545,6 +675,69 @@ curl -X POST http://localhost:8080/api/v1/recreation/credentials?preference_id=U
 }
 ```
 
+## Troubleshooting
+
+### Docker Issues
+
+**Port already in use:**
+```bash
+# Use different port
+# Edit docker-compose.yml, change "8080:8080" to "8081:8080"
+docker-compose up
+```
+
+**Database connection failed:**
+```bash
+# Check if services are running
+docker-compose ps
+
+# View database logs
+docker-compose logs db
+
+# Restart everything
+docker-compose down
+docker-compose up
+```
+
+**Browser automation not working:**
+```bash
+# Chrome/Chromium must be in container
+# Verify it's installed in Dockerfile
+docker-compose logs jcrawl | grep -i chrome
+```
+
+### Local Development Issues
+
+**Port 8080 in use:**
+```bash
+# Find what's using the port
+lsof -i :8080
+
+# Or use different port
+SERVER_PORT=8081 go run main.go
+```
+
+**Database connection failed:**
+```bash
+# Verify PostgreSQL is running
+psql -U jcrawl -d jcrawl
+
+# Check .env DATABASE_URL format
+cat .env | grep DATABASE_URL
+```
+
+**Chrome/Chromium not found:**
+```bash
+# Linux (Ubuntu/Debian)
+sudo apt-get install chromium-browser
+
+# macOS
+brew install chromium
+
+# macOS (with system Chrome)
+# Just use /Applications/Google\ Chrome.app/...
+```
+
 ## Next Steps
 
 - [ ] Implement JWT authentication with tokens
@@ -555,3 +748,9 @@ curl -X POST http://localhost:8080/api/v1/recreation/credentials?preference_id=U
 - [ ] Add support for appointment-based bookings (dentist, doctor, salons)
 - [ ] Implement retry logic for failed bookings
 - [ ] Add user preferences for best time/party size combinations
+
+## Support
+
+- 📖 Read [DEPLOYMENT.md](DEPLOYMENT.md) for production setup
+- 🐛 Report issues on [GitHub Issues](https://github.com/javid-p84/jcrawl/issues)
+- 💬 Discuss ideas in [GitHub Discussions](https://github.com/javid-p84/jcrawl/discussions)
