@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/db"
@@ -27,14 +28,20 @@ func NewChecker() *Checker {
 	}
 }
 
-// CheckAvailability checks if a restaurant has availability matching the preferences
+// CheckAvailability checks if a restaurant/facility has availability matching the preferences
 func (c *Checker) CheckAvailability(ctx context.Context, pref *db.UserPreference) ([]models.Availability, error) {
+	log.Printf("Checking availability for: %s (%s)\n", pref.RestaurantName, pref.GoogleLink)
+
+	// Check if this is a recreation.gov link
+	if isRecreationGovLink(pref.GoogleLink) {
+		return c.checkRecreationGovAvailability(ctx, pref)
+	}
+
+	// Otherwise use browser-based scraping for restaurants
 	if c.browserPool == nil {
 		log.Println("Browser pool not initialized, skipping availability check")
 		return []models.Availability{}, nil
 	}
-
-	log.Printf("Checking availability for: %s (%s)\n", pref.RestaurantName, pref.GoogleLink)
 
 	var availabilities []models.Availability
 
@@ -67,6 +74,42 @@ func (c *Checker) CheckAvailability(ctx context.Context, pref *db.UserPreference
 
 	if len(availabilities) > 0 {
 		log.Printf("Found %d available slots for %s\n", len(availabilities), pref.RestaurantName)
+	}
+
+	return availabilities, nil
+}
+
+// checkRecreationGovAvailability checks recreation.gov using their API
+func (c *Checker) checkRecreationGovAvailability(ctx context.Context, pref *db.UserPreference) ([]models.Availability, error) {
+	recScraper := scraper.NewRecreationGovScraper()
+	availablesByDate, err := recScraper.CheckAvailability(ctx, pref)
+	if err != nil {
+		log.Printf("Error checking recreation.gov availability: %v\n", err)
+		return []models.Availability{}, err
+	}
+
+	var availabilities []models.Availability
+
+	for dateStr, sites := range availablesByDate {
+		date, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			continue
+		}
+
+		for _, site := range sites {
+			avail := models.Availability{
+				PreferenceID: pref.ID,
+				Date:         date,
+				Time:         site, // Site name as the "time"
+				PartySize:    pref.PartySize,
+				Booked:       false,
+			}
+			availabilities = append(availabilities, avail)
+		}
+	}
+
+	if len(availabilities) > 0 {
+		log.Printf("Found %d available campsites for %s\n", len(availabilities), pref.RestaurantName)
 	}
 
 	return availabilities, nil
@@ -116,4 +159,9 @@ func matchesDayPreference(date time.Time, dayPreference []int) bool {
 		}
 	}
 	return false
+}
+
+// isRecreationGovLink checks if a URL is for recreation.gov
+func isRecreationGovLink(url string) bool {
+	return strings.Contains(url, "recreation.gov") || strings.Contains(url, "recreationgov")
 }

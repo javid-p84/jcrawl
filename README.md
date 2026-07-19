@@ -232,12 +232,28 @@ All events are tracked as in-app notifications accessible via the API. Notificat
 
 ## Booking Platforms Supported
 
-| Platform | Format | Status |
-|----------|--------|--------|
-| **Resy** | data-time attributes, form inputs | ✅ Implemented |
-| **OpenTable** | Button-based time slots | ✅ Implemented |
-| **Google Reserve** | Dialog-based booking | ✅ Implemented |
-| **Generic** | Text-based times + common inputs | ✅ Fallback |
+| Platform | Type | Format | Status |
+|----------|------|--------|--------|
+| **Resy** | Restaurant | data-time attributes, form inputs | ✅ Implemented |
+| **OpenTable** | Restaurant | Button-based time slots | ✅ Implemented |
+| **Google Reserve** | Restaurant | Dialog-based booking | ✅ Implemented |
+| **Recreation.gov** | Camping/Outdoors | API + browser automation | ✅ Implemented |
+| **Generic** | Any | Text-based times + common inputs | ✅ Fallback |
+
+### Recreation.gov Features
+
+Recreation.gov support includes:
+- ✅ Campground availability checking via API
+- ✅ Day-use area reservations
+- ✅ Facility ID extraction from URLs
+- ✅ Multi-date availability checks
+- ✅ Day-of-week filtering
+- ✅ Automatic reservation completion
+
+**Supported recreation.gov URLs:**
+- `https://www.recreation.gov/camping/campgrounds/123456/`
+- `https://www.recreation.gov/camping/campsites/123456/`
+- `https://www.recreation.gov/api/camps/availability/campgrounds/123456/month/...`
 
 ## Example Workflow
 

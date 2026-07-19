@@ -63,6 +63,8 @@ func (b *Booker) Book(ctx context.Context, googleLink string, details *models.Bo
 		booker = NewOpenTableBooker()
 	case "google-reserve":
 		booker = NewGoogleReserveBooker()
+	case "recreation-gov":
+		booker = NewRecreationGovBooker()
 	default:
 		booker = NewGenericBooker()
 	}
@@ -99,6 +101,8 @@ type PlatformBooker interface {
 func detectPlatform(url string) (string, error) {
 	// Check URL patterns
 	switch {
+	case isRecreationGovLink(url):
+		return "recreation-gov", nil
 	case isResyLink(url):
 		return "resy", nil
 	case isOpenTableLink(url):
@@ -109,6 +113,10 @@ func detectPlatform(url string) (string, error) {
 		// Default to generic booker for unknown platforms
 		return "generic", nil
 	}
+}
+
+func isRecreationGovLink(url string) bool {
+	return contains(url, "recreation.gov") || contains(url, "recreationgov")
 }
 
 func isResyLink(url string) bool {
