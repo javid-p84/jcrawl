@@ -48,13 +48,13 @@ func (r *PreferenceRepository) CreatePreference(pref *models.UserPreference) err
 	err := r.db.QueryRow(
 		`INSERT INTO user_preferences
 		(user_id, google_link, restaurant_name, date_range_from, date_range_to,
-		 day_preference, party_size, auto_book, active, guest_name, guest_email, guest_phone, special_notes,
+		 day_preference, party_size, auto_book, notify_only, active, guest_name, guest_email, guest_phone, special_notes,
 		 recreation_gov_username, recreation_gov_password, recreation_gov_oauth_token, recreation_gov_oauth_provider,
 		 recreation_gov_oauth_refresh, recreation_gov_oauth_expiry)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		RETURNING id, created_at, updated_at`,
 		pref.UserID, pref.GoogleLink, pref.RestaurantName, pref.DateRangeFrom, pref.DateRangeTo,
-		pref.DayPreference, pref.PartySize, pref.AutoBook, pref.Active,
+		pref.DayPreference, pref.PartySize, pref.AutoBook, pref.NotifyOnly, pref.Active,
 		pref.GuestName, pref.GuestEmail, pref.GuestPhone, pref.SpecialNotes,
 		pref.RecreationGovUsername, pref.RecreationGovPassword, pref.RecreationGovOAuthToken,
 		pref.RecreationGovOAuthProvider, pref.RecreationGovOAuthRefresh, pref.RecreationGovOAuthExpiry,
@@ -65,7 +65,7 @@ func (r *PreferenceRepository) CreatePreference(pref *models.UserPreference) err
 func (r *PreferenceRepository) GetPreferencesByUserID(userID string) ([]models.UserPreference, error) {
 	rows, err := r.db.Query(
 		`SELECT id, user_id, google_link, restaurant_name, date_range_from, date_range_to,
-		 day_preference, party_size, auto_book, active, guest_name, guest_email, guest_phone,
+		 day_preference, party_size, auto_book, notify_only, active, guest_name, guest_email, guest_phone,
 		 special_notes, recreation_gov_username, recreation_gov_password, recreation_gov_oauth_token,
 		 recreation_gov_oauth_provider, recreation_gov_oauth_refresh, recreation_gov_oauth_expiry,
 		 last_checked_at, last_booked_at, created_at, updated_at
@@ -83,7 +83,7 @@ func (r *PreferenceRepository) GetPreferencesByUserID(userID string) ([]models.U
 		err := rows.Scan(
 			&pref.ID, &pref.UserID, &pref.GoogleLink, &pref.RestaurantName,
 			&pref.DateRangeFrom, &pref.DateRangeTo, &pref.DayPreference,
-			&pref.PartySize, &pref.AutoBook, &pref.Active, &pref.GuestName, &pref.GuestEmail,
+			&pref.PartySize, &pref.AutoBook, &pref.NotifyOnly, &pref.Active, &pref.GuestName, &pref.GuestEmail,
 			&pref.GuestPhone, &pref.SpecialNotes, &pref.RecreationGovUsername, &pref.RecreationGovPassword,
 			&pref.RecreationGovOAuthToken, &pref.RecreationGovOAuthProvider, &pref.RecreationGovOAuthRefresh,
 			&pref.RecreationGovOAuthExpiry, &pref.LastCheckedAt, &pref.LastBookedAt, &pref.CreatedAt, &pref.UpdatedAt,
@@ -103,7 +103,7 @@ func (r *PreferenceRepository) GetPreferencesByUserID(userID string) ([]models.U
 func (r *PreferenceRepository) GetActivePreferences() ([]models.UserPreference, error) {
 	rows, err := r.db.Query(
 		`SELECT id, user_id, google_link, restaurant_name, date_range_from, date_range_to,
-		 day_preference, party_size, auto_book, active, guest_name, guest_email, guest_phone,
+		 day_preference, party_size, auto_book, notify_only, active, guest_name, guest_email, guest_phone,
 		 special_notes, recreation_gov_username, recreation_gov_password, recreation_gov_oauth_token,
 		 recreation_gov_oauth_provider, recreation_gov_oauth_refresh, recreation_gov_oauth_expiry,
 		 last_checked_at, last_booked_at, created_at, updated_at
@@ -120,7 +120,7 @@ func (r *PreferenceRepository) GetActivePreferences() ([]models.UserPreference, 
 		err := rows.Scan(
 			&pref.ID, &pref.UserID, &pref.GoogleLink, &pref.RestaurantName,
 			&pref.DateRangeFrom, &pref.DateRangeTo, &pref.DayPreference,
-			&pref.PartySize, &pref.AutoBook, &pref.Active, &pref.GuestName, &pref.GuestEmail,
+			&pref.PartySize, &pref.AutoBook, &pref.NotifyOnly, &pref.Active, &pref.GuestName, &pref.GuestEmail,
 			&pref.GuestPhone, &pref.SpecialNotes, &pref.RecreationGovUsername, &pref.RecreationGovPassword,
 			&pref.RecreationGovOAuthToken, &pref.RecreationGovOAuthProvider, &pref.RecreationGovOAuthRefresh,
 			&pref.RecreationGovOAuthExpiry, &pref.LastCheckedAt, &pref.LastBookedAt, &pref.CreatedAt, &pref.UpdatedAt,

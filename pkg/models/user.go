@@ -19,11 +19,12 @@ type UserPreference struct {
 	DateRangeTo                time.Time `json:"date_range_to"`
 	DayPreference              []int     `json:"day_preference"` // 0=Sunday, 6=Saturday
 	PartySize                  int       `json:"party_size"`
-	AutoBook                   bool      `json:"auto_book"`
+	AutoBook                   bool      `json:"auto_book"`                           // Auto-book when available (requires credentials)
+	NotifyOnly                 bool      `json:"notify_only"`                         // Only send notifications, don't auto-book (no credentials needed)
 	Active                     bool      `json:"active"`
-	GuestName                  string    `json:"guest_name"`      // For booking reservation
-	GuestEmail                 string    `json:"guest_email"`     // For confirmation
-	GuestPhone                 string    `json:"guest_phone"`     // For restaurant contact
+	GuestName                  string    `json:"guest_name"`      // For booking reservation (optional if notify_only)
+	GuestEmail                 string    `json:"guest_email"`     // For confirmation (optional if notify_only)
+	GuestPhone                 string    `json:"guest_phone"`     // For restaurant contact (optional if notify_only)
 	SpecialNotes               string    `json:"special_notes"`   // Dietary restrictions, preferences
 
 	// Option 1: Username/Password Authentication

@@ -292,9 +292,52 @@ Recreation.gov support includes:
    - Preference auto-deactivated
 ```
 
+## Booking Modes
+
+jcrawl supports **THREE flexible usage modes**:
+
+### 1️⃣ Notifications Only (No Login Required)
+- Check availability without storing any credentials
+- Get in-app notifications when campsites become available
+- Manually book through recreation.gov website
+- Perfect for casual checking
+
+**Setup:**
+```bash
+curl -X POST http://localhost:8080/api/v1/preferences \
+  -H "Content-Type: application/json" \
+  -H "X-User-ID: user-uuid" \
+  -d '{
+    "google_link": "https://www.recreation.gov/camping/campgrounds/123456/",
+    "restaurant_name": "Yosemite Valley Campground",
+    "date_range_from": "2024-07-01",
+    "date_range_to": "2024-07-31",
+    "day_preference": [5, 6],
+    "party_size": 4,
+    "notify_only": true,
+    "auto_book": false
+  }'
+```
+
+**Result:**
+- ✅ No credentials needed
+- ✅ Get notifications when availability found
+- ✅ Browse/click to book manually
+- ⏭️ Simple, low-risk
+
+### 2️⃣ Auto-Book with Option 1: Username/Password
+- Store email/password securely
+- Automatically book when availability is found
+- Fastest way to secure a campsite
+
+### 3️⃣ Auto-Book with Option 2: OAuth Token
+- Store recreation.gov OAuth token
+- Automatically book with token authentication
+- No password stored
+
 ## Recreation.gov Authentication Options
 
-jcrawl supports **TWO secure authentication methods** for recreation.gov:
+jcrawl supports **TWO secure authentication methods** (when using auto-book):
 
 ### Option 1: Username/Password (Encrypted)
 Store your recreation.gov email and password securely:

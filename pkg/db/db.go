@@ -46,6 +46,7 @@ func InitializeSchema(db *sql.DB) error {
 		day_preference INTEGER[] DEFAULT ARRAY[]::INTEGER[],
 		party_size INTEGER NOT NULL,
 		auto_book BOOLEAN DEFAULT true,
+		notify_only BOOLEAN DEFAULT false,
 		active BOOLEAN DEFAULT true,
 		guest_name VARCHAR(255),
 		guest_email VARCHAR(255),

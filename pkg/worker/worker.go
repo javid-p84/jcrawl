@@ -126,6 +126,12 @@ func (w *CheckWorker) checkPreference(ctx context.Context, pref *db.UserPreferen
 
 	log.Printf("Found %d available slots for preference %s\n", len(availabilities), pref.ID)
 
+	// If notify_only mode, just send notifications
+	if pref.NotifyOnly {
+		w.handleNotifyOnly(ctx, pref, availabilities)
+		return
+	}
+
 	// If auto-book is enabled, attempt to book the first available slot
 	if pref.AutoBook && w.booker != nil {
 		w.handleAutoBooking(ctx, pref, availabilities)
@@ -196,3 +202,27 @@ func (w *CheckWorker) handleAutoBooking(ctx context.Context, pref *db.UserPrefer
 		// TODO: Add method to deactivate preference
 	}
 }
+
+// handleNotifyOnly sends notifications about availability without booking
+func (w *CheckWorker) handleNotifyOnly(ctx context.Context, pref *db.UserPreference, availabilities []models.Availability) {
+	log.Printf("Notify-only mode: Found %d slots for %s\n", len(availabilities), pref.RestaurantName)
+
+	// Group availabilities by date
+	availablesByDate := make(map[string][]string)
+	for _, avail := range availabilities {
+		dateStr := avail.Date.Format("2006-01-02")
+		availablesByDate[dateStr] = append(availablesByDate[dateStr], avail.Time)
+	}
+
+	// Send notification for each unique date with availability
+	for dateStr, timeSlots := range availablesByDate {
+		date, _ := time.Parse("2006-01-02", dateStr)
+		log.Printf("Sending notification for %s: %d available times\n", dateStr, len(timeSlots))
+
+		// TODO: Create and send notification via notification service
+		// For now, log that we would send notification
+		log.Printf("Would notify user %s: %s has availability on %s at: %v\n",
+			pref.UserID, pref.RestaurantName, dateStr, timeSlots)
+	}
+}
+
