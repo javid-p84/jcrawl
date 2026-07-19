@@ -140,6 +140,8 @@ User provides:
 - Date range (e.g., Jan 1-31)
 - Day preferences (e.g., Fri/Sat only)
 - Party size (e.g., 2 people)
+- **Guest details** (name, email, phone) for auto-booking
+- Optional special notes (dietary restrictions, seating preferences)
 
 ### 2. Background Worker Monitors
 Every 5 minutes, the worker:
@@ -156,11 +158,18 @@ Supports various booking platforms:
 - **Google Reserve** - Handles button-based slots
 - **Generic** - Fallback pattern matching for times
 
-### 4. Auto-Booking (Coming Soon)
-When availability is found, can automatically:
-- Book the preferred time slot
-- Send confirmation details to user
-- Store booking record
+### 4. Auto-Booking (Now Implemented!)
+When availability is found and `auto_book: true`:
+1. **Detect Platform** - Identifies which booking system (Resy, OpenTable, etc.)
+2. **Fill Form** - Automatically fills:
+   - Guest name
+   - Email address
+   - Phone number
+   - Special notes/preferences
+3. **Click Submit** - Completes the reservation
+4. **Capture Confirmation** - Extracts confirmation ID
+5. **Store Record** - Saves booking in database with status and confirmation ID
+6. **Deactivate** - Stops monitoring after successful booking
 
 ## Scraping Technology
 
@@ -176,11 +185,52 @@ Uses **chromedp** for browser automation:
 - macOS: `brew install chromium` or use system Chrome
 - Windows: Download from chromium.woolyss.com
 
+## Booking Platforms Supported
+
+| Platform | Format | Status |
+|----------|--------|--------|
+| **Resy** | data-time attributes, form inputs | ✅ Implemented |
+| **OpenTable** | Button-based time slots | ✅ Implemented |
+| **Google Reserve** | Dialog-based booking | ✅ Implemented |
+| **Generic** | Text-based times + common inputs | ✅ Fallback |
+
+## Example Workflow
+
+```
+1. User creates preference:
+   POST /api/v1/preferences
+   {
+     "google_link": "https://www.google.com/maps/place/...",
+     "restaurant_name": "Michelin Star Restaurant",
+     "date_range_from": "2024-01-15",
+     "date_range_to": "2024-02-15",
+     "day_preference": [5, 6],  // Fri/Sat
+     "party_size": 2,
+     "auto_book": true,
+     "guest_name": "John Doe",
+     "guest_email": "john@example.com",
+     "guest_phone": "+1234567890"
+   }
+
+2. Worker checks every 5 minutes:
+   - Loads restaurant page
+   - Finds: Jan 17 (Fri) at 7:30 PM available
+   - Auto-books with guest info
+   - Saves confirmation
+
+3. User gets confirmation:
+   - Email sent (future feature)
+   - Booking record in database
+   - Preference auto-deactivated
+```
+
 ## Next Steps
 
-- [ ] Implement JWT authentication
-- [ ] Implement auto-booking logic
-- [ ] Add email/Slack notifications
-- [ ] Add support for direct restaurant APIs
-- [ ] Create web dashboard
-- [ ] Add support for appointment-based bookings (dentist, doctor, etc.)
+- [ ] Implement JWT authentication with tokens
+- [ ] Add email notifications on successful bookings
+- [ ] Add Slack integration for notifications
+- [ ] Support direct restaurant APIs (Yelp, TripAdvisor)
+- [ ] Create web dashboard for preferences/bookings
+- [ ] Add support for appointment-based bookings (dentist, doctor, salons)
+- [ ] Implement retry logic for failed bookings
+- [ ] Add user preferences for best time/party size combinations

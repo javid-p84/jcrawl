@@ -20,3 +20,22 @@ type Availability struct {
 	Booked       bool      `json:"booked"`
 	BookedAt     time.Time `json:"booked_at,omitempty"`
 }
+
+// BookingDetails contains the information needed to complete a reservation
+type BookingDetails struct {
+	Date         time.Time
+	Time         string
+	PartySize    int
+	GuestName    string
+	GuestEmail   string
+	GuestPhone   string
+	SpecialNotes string
+}
+
+// BookingResult contains the result of a booking attempt
+type BookingResult struct {
+	Success       bool
+	ConfirmationID string
+	Message       string
+	Error         error
+}

@@ -13,6 +13,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/api"
+	"github.com/jaavvviiiiddddd/jcrawl/pkg/booker"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/db"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/restaurant"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/worker"
@@ -48,7 +49,11 @@ func main() {
 
 	// Initialize services
 	checker := restaurant.NewChecker()
-	checkWorker := worker.NewCheckWorker(prefRepo, bookRepo, checker, 5*time.Minute)
+	bookr, err := booker.NewBooker()
+	if err != nil {
+		log.Printf("Warning: Failed to initialize booker: %v\n", err)
+	}
+	checkWorker := worker.NewCheckWorker(prefRepo, bookRepo, checker, bookr, 5*time.Minute)
 	apiHandler := api.NewHandler(userRepo, prefRepo, bookRepo)
 
 	// Setup routes

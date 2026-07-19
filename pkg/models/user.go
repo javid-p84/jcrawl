@@ -21,7 +21,12 @@ type UserPreference struct {
 	PartySize      int       `json:"party_size"`
 	AutoBook       bool      `json:"auto_book"`
 	Active         bool      `json:"active"`
+	GuestName      string    `json:"guest_name"`      // For booking reservation
+	GuestEmail     string    `json:"guest_email"`     // For confirmation
+	GuestPhone     string    `json:"guest_phone"`     // For restaurant contact
+	SpecialNotes   string    `json:"special_notes"`   // Dietary restrictions, preferences
 	LastCheckedAt  *time.Time `json:"last_checked_at,omitempty"`
+	LastBookedAt   *time.Time `json:"last_booked_at,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }

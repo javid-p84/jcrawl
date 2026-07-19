@@ -48,11 +48,12 @@ func (r *PreferenceRepository) CreatePreference(pref *models.UserPreference) err
 	err := r.db.QueryRow(
 		`INSERT INTO user_preferences
 		(user_id, google_link, restaurant_name, date_range_from, date_range_to,
-		 day_preference, party_size, auto_book, active)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 day_preference, party_size, auto_book, active, guest_name, guest_email, guest_phone, special_notes)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING id, created_at, updated_at`,
 		pref.UserID, pref.GoogleLink, pref.RestaurantName, pref.DateRangeFrom, pref.DateRangeTo,
 		pref.DayPreference, pref.PartySize, pref.AutoBook, pref.Active,
+		pref.GuestName, pref.GuestEmail, pref.GuestPhone, pref.SpecialNotes,
 	).Scan(&pref.ID, &pref.CreatedAt, &pref.UpdatedAt)
 	return err
 }
@@ -60,7 +61,8 @@ func (r *PreferenceRepository) CreatePreference(pref *models.UserPreference) err
 func (r *PreferenceRepository) GetPreferencesByUserID(userID string) ([]models.UserPreference, error) {
 	rows, err := r.db.Query(
 		`SELECT id, user_id, google_link, restaurant_name, date_range_from, date_range_to,
-		 day_preference, party_size, auto_book, active, last_checked_at, created_at, updated_at
+		 day_preference, party_size, auto_book, active, guest_name, guest_email, guest_phone,
+		 special_notes, last_checked_at, last_booked_at, created_at, updated_at
 		 FROM user_preferences WHERE user_id = $1 ORDER BY created_at DESC`,
 		userID,
 	)
@@ -75,7 +77,8 @@ func (r *PreferenceRepository) GetPreferencesByUserID(userID string) ([]models.U
 		err := rows.Scan(
 			&pref.ID, &pref.UserID, &pref.GoogleLink, &pref.RestaurantName,
 			&pref.DateRangeFrom, &pref.DateRangeTo, &pref.DayPreference,
-			&pref.PartySize, &pref.AutoBook, &pref.Active, &pref.LastCheckedAt,
+			&pref.PartySize, &pref.AutoBook, &pref.Active, &pref.GuestName, &pref.GuestEmail,
+			&pref.GuestPhone, &pref.SpecialNotes, &pref.LastCheckedAt, &pref.LastBookedAt,
 			&pref.CreatedAt, &pref.UpdatedAt,
 		)
 		if err != nil {
@@ -89,7 +92,8 @@ func (r *PreferenceRepository) GetPreferencesByUserID(userID string) ([]models.U
 func (r *PreferenceRepository) GetActivePreferences() ([]models.UserPreference, error) {
 	rows, err := r.db.Query(
 		`SELECT id, user_id, google_link, restaurant_name, date_range_from, date_range_to,
-		 day_preference, party_size, auto_book, active, last_checked_at, created_at, updated_at
+		 day_preference, party_size, auto_book, active, guest_name, guest_email, guest_phone,
+		 special_notes, last_checked_at, last_booked_at, created_at, updated_at
 		 FROM user_preferences WHERE active = true`,
 	)
 	if err != nil {
@@ -103,7 +107,8 @@ func (r *PreferenceRepository) GetActivePreferences() ([]models.UserPreference, 
 		err := rows.Scan(
 			&pref.ID, &pref.UserID, &pref.GoogleLink, &pref.RestaurantName,
 			&pref.DateRangeFrom, &pref.DateRangeTo, &pref.DayPreference,
-			&pref.PartySize, &pref.AutoBook, &pref.Active, &pref.LastCheckedAt,
+			&pref.PartySize, &pref.AutoBook, &pref.Active, &pref.GuestName, &pref.GuestEmail,
+			&pref.GuestPhone, &pref.SpecialNotes, &pref.LastCheckedAt, &pref.LastBookedAt,
 			&pref.CreatedAt, &pref.UpdatedAt,
 		)
 		if err != nil {

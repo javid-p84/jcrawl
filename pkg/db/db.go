@@ -47,7 +47,12 @@ func InitializeSchema(db *sql.DB) error {
 		party_size INTEGER NOT NULL,
 		auto_book BOOLEAN DEFAULT true,
 		active BOOLEAN DEFAULT true,
+		guest_name VARCHAR(255),
+		guest_email VARCHAR(255),
+		guest_phone VARCHAR(20),
+		special_notes TEXT,
 		last_checked_at TIMESTAMP,
+		last_booked_at TIMESTAMP,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
