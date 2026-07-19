@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+*.iml
+
+# Build artifacts
+jcrawl
+*.out
+*.test
+dist
+build
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+README.md
+CHANGELOG.md
+
+# Data
+data/
+*.db
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore

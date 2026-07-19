@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: jcrawl-db
+    environment:
+      POSTGRES_USER: jcrawl
+      POSTGRES_PASSWORD: jcrawl_secure_password_change_me
+      POSTGRES_DB: jcrawl
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jcrawl -d jcrawl"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - jcrawl-network
+
+  jcrawl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jcrawl-app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: postgres://jcrawl:jcrawl_secure_password_change_me@db:5432/jcrawl?sslmode=disable
+
+      # Server
+      SERVER_PORT: 8080
+      SERVER_ENV: production
+
+      # Encryption (generate a secure key and put it here)
+      ENCRYPTION_KEY: "default-insecure-key-32-bytes-1234"
+
+      # JWT
+      JWT_SECRET: "your-secret-key-change-me-in-production"
+
+      # Worker
+      WORKER_CHECK_INTERVAL_MINUTES: 5
+
+      # Logging
+      LOG_LEVEL: info
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    networks:
+      - jcrawl-network
+    restart: unless-stopped
+
+networks:
+  jcrawl-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

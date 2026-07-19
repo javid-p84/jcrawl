@@ -24,6 +24,26 @@ vendor/
 *.swp
 *.swo
 *~
+*.iml
 
 # OS
 .DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Data
+data/
+*.db
+*.sqlite
+
+# Docker
+docker-compose.override.yml
+
+# Build
+jcrawl
+build/
+dist/

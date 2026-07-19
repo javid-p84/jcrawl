@@ -41,12 +41,31 @@ A multi-user Go service that monitors online availability and automatically book
 
 ## Getting Started
 
-### Prerequisites
+### Quick Start with Docker (Recommended)
 
+**Prerequisites:**
+- Docker
+- Docker Compose
+
+**Setup (3 commands):**
+```bash
+git clone https://github.com/javid-p84/jcrawl.git
+cd jcrawl
+docker-compose up
+```
+
+Server starts on `http://localhost:8080`
+
+Database automatically initializes on first run.
+
+### Local Development (Without Docker)
+
+**Prerequisites:**
 - Go 1.21+
 - PostgreSQL 12+
+- Chrome/Chromium
 
-### Installation
+**Installation:**
 
 1. Clone the repository:
 ```bash
@@ -64,18 +83,14 @@ go mod download
 cp .env.example .env
 ```
 
-4. Configure PostgreSQL connection in `.env`:
+4. Configure PostgreSQL in `.env`:
 ```
 DATABASE_URL=postgres://user:password@localhost:5432/jcrawl?sslmode=disable
 ```
 
-5. Build:
+5. Build and run:
 ```bash
 go build -o jcrawl
-```
-
-6. Run:
-```bash
 ./jcrawl
 ```
 
@@ -183,6 +198,65 @@ When availability is found and `auto_book: true`:
 4. **Capture Confirmation** - Extracts confirmation ID
 5. **Store Record** - Saves booking in database with status and confirmation ID
 6. **Deactivate** - Stops monitoring after successful booking
+
+## Docker
+
+jcrawl includes full Docker support for easy deployment.
+
+### Docker Compose Setup
+
+**Start everything:**
+```bash
+docker-compose up
+```
+
+**In the background:**
+```bash
+docker-compose up -d
+```
+
+**Stop everything:**
+```bash
+docker-compose down
+```
+
+**View logs:**
+```bash
+docker-compose logs -f jcrawl
+docker-compose logs -f db
+```
+
+### What's Included
+
+- **jcrawl service** - Go application with Chrome/Chromium
+- **PostgreSQL database** - Automatic initialization
+- **Health checks** - Automatic restart on failure
+- **Volume persistence** - Database data persists between restarts
+- **Networking** - Internal Docker network for service communication
+
+### Docker Production Deployment
+
+For production, update `.env` with:
+```
+ENCRYPTION_KEY=<generate-secure-32-byte-key>
+JWT_SECRET=<generate-secure-random-value>
+POSTGRES_PASSWORD=<strong-password>
+SERVER_ENV=production
+LOG_LEVEL=warn
+```
+
+Then:
+```bash
+docker-compose up -d
+```
+
+### Rebuild After Code Changes
+
+```bash
+docker-compose down
+docker-compose build
+docker-compose up
+```
 
 ## Scraping Technology
 
