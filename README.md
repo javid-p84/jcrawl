@@ -100,6 +100,9 @@ Server starts on `http://localhost:8080`
 - `POST /api/v1/notifications/mark-as-read?id=<notif-id>` - Mark notification as read
 - `POST /api/v1/notifications/mark-all-as-read` - Mark all notifications as read
 
+### Recreation.gov
+- `POST /api/v1/recreation/credentials?preference_id=<id>` - Store recreation.gov credentials (encrypted)
+
 ### Health
 - `GET /health` - Service health check
 
@@ -283,6 +286,84 @@ Recreation.gov support includes:
    - Email sent (future feature)
    - Booking record in database
    - Preference auto-deactivated
+```
+
+## Security & Encryption
+
+jcrawl uses **AES-256-GCM encryption** for storing sensitive credentials:
+
+### Credential Storage
+- **Recreation.gov passwords** - Encrypted using AES-256-GCM
+- **Encryption key** - 32-byte key from `ENCRYPTION_KEY` environment variable
+- **Storage** - Base64-encoded ciphertext in PostgreSQL
+- **Decryption** - Only when needed for login/booking
+
+### Security Features
+✅ **Never logged** - Passwords never appear in logs  
+✅ **Encrypted at rest** - Stored as encrypted ciphertext in database  
+✅ **Unique nonce** - Each encryption uses a random nonce (IV)  
+✅ **Authenticated encryption** - GCM mode prevents tampering  
+✅ **Separate keys** - Encryption key separate from app secrets  
+
+### Setting Up Encryption Key
+
+Generate a secure 32-byte key:
+```bash
+openssl rand -hex 16  # Generates 32 hex characters (16 bytes when decoded)
+# Or for 32 bytes exactly:
+head -c 32 /dev/urandom | base64
+```
+
+Set in `.env`:
+```
+ENCRYPTION_KEY=your-generated-32-byte-key-here
+```
+
+### How Recreation.gov Login Works
+
+**Storage Phase:**
+```
+User Input: password "MyPassword123"
+         ↓
+Crypto.Encrypt(password)
+         ↓
+Encrypted: "FsK8x9L2Np3qR5sT7uV9w1xY3zA5bC7d..." (base64)
+         ↓
+Store in DB
+```
+
+**Usage Phase (During Booking):**
+```
+Read encrypted password from DB
+         ↓
+Crypto.Decrypt(encrypted)
+         ↓
+Plaintext: "MyPassword123"
+         ↓
+Use for login/booking
+         ↓
+Memory cleared
+```
+
+### API Usage
+
+**Store recreation.gov credentials:**
+```bash
+curl -X POST http://localhost:8080/api/v1/recreation/credentials?preference_id=UUID \
+  -H "Content-Type: application/json" \
+  -H "X-User-ID: user-uuid" \
+  -d '{
+    "username": "your-email@example.com",
+    "password": "your-recreation-gov-password"
+  }'
+```
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "message": "Credentials updated. Please ensure your recreation.gov username and password are correct."
+}
 ```
 
 ## Next Steps

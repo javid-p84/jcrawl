@@ -48,12 +48,14 @@ func (r *PreferenceRepository) CreatePreference(pref *models.UserPreference) err
 	err := r.db.QueryRow(
 		`INSERT INTO user_preferences
 		(user_id, google_link, restaurant_name, date_range_from, date_range_to,
-		 day_preference, party_size, auto_book, active, guest_name, guest_email, guest_phone, special_notes)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		 day_preference, party_size, auto_book, active, guest_name, guest_email, guest_phone, special_notes,
+		 recreation_gov_username, recreation_gov_password)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id, created_at, updated_at`,
 		pref.UserID, pref.GoogleLink, pref.RestaurantName, pref.DateRangeFrom, pref.DateRangeTo,
 		pref.DayPreference, pref.PartySize, pref.AutoBook, pref.Active,
 		pref.GuestName, pref.GuestEmail, pref.GuestPhone, pref.SpecialNotes,
+		pref.RecreationGovUsername, pref.RecreationGovPassword,
 	).Scan(&pref.ID, &pref.CreatedAt, &pref.UpdatedAt)
 	return err
 }
@@ -62,7 +64,7 @@ func (r *PreferenceRepository) GetPreferencesByUserID(userID string) ([]models.U
 	rows, err := r.db.Query(
 		`SELECT id, user_id, google_link, restaurant_name, date_range_from, date_range_to,
 		 day_preference, party_size, auto_book, active, guest_name, guest_email, guest_phone,
-		 special_notes, last_checked_at, last_booked_at, created_at, updated_at
+		 special_notes, recreation_gov_username, recreation_gov_password, last_checked_at, last_booked_at, created_at, updated_at
 		 FROM user_preferences WHERE user_id = $1 ORDER BY created_at DESC`,
 		userID,
 	)
@@ -78,12 +80,14 @@ func (r *PreferenceRepository) GetPreferencesByUserID(userID string) ([]models.U
 			&pref.ID, &pref.UserID, &pref.GoogleLink, &pref.RestaurantName,
 			&pref.DateRangeFrom, &pref.DateRangeTo, &pref.DayPreference,
 			&pref.PartySize, &pref.AutoBook, &pref.Active, &pref.GuestName, &pref.GuestEmail,
-			&pref.GuestPhone, &pref.SpecialNotes, &pref.LastCheckedAt, &pref.LastBookedAt,
-			&pref.CreatedAt, &pref.UpdatedAt,
+			&pref.GuestPhone, &pref.SpecialNotes, &pref.RecreationGovUsername, &pref.RecreationGovPassword,
+			&pref.LastCheckedAt, &pref.LastBookedAt, &pref.CreatedAt, &pref.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
+		// Don't return passwords in API responses
+		pref.RecreationGovPassword = ""
 		prefs = append(prefs, pref)
 	}
 	return prefs, rows.Err()
@@ -93,7 +97,7 @@ func (r *PreferenceRepository) GetActivePreferences() ([]models.UserPreference, 
 	rows, err := r.db.Query(
 		`SELECT id, user_id, google_link, restaurant_name, date_range_from, date_range_to,
 		 day_preference, party_size, auto_book, active, guest_name, guest_email, guest_phone,
-		 special_notes, last_checked_at, last_booked_at, created_at, updated_at
+		 special_notes, recreation_gov_username, recreation_gov_password, last_checked_at, last_booked_at, created_at, updated_at
 		 FROM user_preferences WHERE active = true`,
 	)
 	if err != nil {
@@ -108,8 +112,8 @@ func (r *PreferenceRepository) GetActivePreferences() ([]models.UserPreference, 
 			&pref.ID, &pref.UserID, &pref.GoogleLink, &pref.RestaurantName,
 			&pref.DateRangeFrom, &pref.DateRangeTo, &pref.DayPreference,
 			&pref.PartySize, &pref.AutoBook, &pref.Active, &pref.GuestName, &pref.GuestEmail,
-			&pref.GuestPhone, &pref.SpecialNotes, &pref.LastCheckedAt, &pref.LastBookedAt,
-			&pref.CreatedAt, &pref.UpdatedAt,
+			&pref.GuestPhone, &pref.SpecialNotes, &pref.RecreationGovUsername, &pref.RecreationGovPassword,
+			&pref.LastCheckedAt, &pref.LastBookedAt, &pref.CreatedAt, &pref.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err

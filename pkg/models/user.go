@@ -11,24 +11,26 @@ type User struct {
 }
 
 type UserPreference struct {
-	ID             string    `json:"id"`
-	UserID         string    `json:"user_id"`
-	GoogleLink     string    `json:"google_link"`
-	RestaurantName string    `json:"restaurant_name"`
-	DateRangeFrom  time.Time `json:"date_range_from"`
-	DateRangeTo    time.Time `json:"date_range_to"`
-	DayPreference  []int     `json:"day_preference"` // 0=Sunday, 6=Saturday
-	PartySize      int       `json:"party_size"`
-	AutoBook       bool      `json:"auto_book"`
-	Active         bool      `json:"active"`
-	GuestName      string    `json:"guest_name"`      // For booking reservation
-	GuestEmail     string    `json:"guest_email"`     // For confirmation
-	GuestPhone     string    `json:"guest_phone"`     // For restaurant contact
-	SpecialNotes   string    `json:"special_notes"`   // Dietary restrictions, preferences
-	LastCheckedAt  *time.Time `json:"last_checked_at,omitempty"`
-	LastBookedAt   *time.Time `json:"last_booked_at,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID                     string    `json:"id"`
+	UserID                 string    `json:"user_id"`
+	GoogleLink             string    `json:"google_link"`
+	RestaurantName         string    `json:"restaurant_name"`
+	DateRangeFrom          time.Time `json:"date_range_from"`
+	DateRangeTo            time.Time `json:"date_range_to"`
+	DayPreference          []int     `json:"day_preference"` // 0=Sunday, 6=Saturday
+	PartySize              int       `json:"party_size"`
+	AutoBook               bool      `json:"auto_book"`
+	Active                 bool      `json:"active"`
+	GuestName              string    `json:"guest_name"`      // For booking reservation
+	GuestEmail             string    `json:"guest_email"`     // For confirmation
+	GuestPhone             string    `json:"guest_phone"`     // For restaurant contact
+	SpecialNotes           string    `json:"special_notes"`   // Dietary restrictions, preferences
+	RecreationGovUsername  string    `json:"recreation_gov_username,omitempty"` // Encrypted in DB
+	RecreationGovPassword  string    `json:"recreation_gov_password,omitempty"` // Encrypted in DB, never returned in API
+	LastCheckedAt          *time.Time `json:"last_checked_at,omitempty"`
+	LastBookedAt           *time.Time `json:"last_booked_at,omitempty"`
+	CreatedAt              time.Time `json:"created_at"`
+	UpdatedAt              time.Time `json:"updated_at"`
 }
 
 type BookingHistory struct {

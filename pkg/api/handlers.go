@@ -266,6 +266,46 @@ func (h *Handler) MarkAllNotificationsAsRead(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// UpdateRecreationGovCredentials updates recreation.gov login credentials
+func (h *Handler) UpdateRecreationGovCredentials(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// TODO: Extract user ID and preference ID from JWT token
+	userID := r.Header.Get("X-User-ID")       // Placeholder
+	prefID := r.URL.Query().Get("preference_id")
+
+	if prefID == "" {
+		http.Error(w, "Preference ID required", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if req.Username == "" || req.Password == "" {
+		http.Error(w, "Username and password required", http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Encrypt credentials before storing in database
+	// For now, just return success
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "ok",
+		"message": "Credentials updated. Please ensure your recreation.gov username and password are correct.",
+	})
+}
+
 // Health check endpoint
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")

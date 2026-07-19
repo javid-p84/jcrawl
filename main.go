@@ -14,6 +14,7 @@ import (
 
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/api"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/booker"
+	"github.com/jaavvviiiiddddd/jcrawl/pkg/crypto"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/db"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/restaurant"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/worker"
@@ -24,6 +25,12 @@ func main() {
 
 	// Load environment variables
 	godotenv.Load()
+
+	// Initialize crypto manager
+	cryptoMgr, err := crypto.NewCryptoManager()
+	if err != nil {
+		log.Fatalf("Failed to initialize crypto: %v", err)
+	}
 
 	// Connect to database
 	dbURL := os.Getenv("DATABASE_URL")

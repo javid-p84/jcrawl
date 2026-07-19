@@ -51,6 +51,8 @@ func InitializeSchema(db *sql.DB) error {
 		guest_email VARCHAR(255),
 		guest_phone VARCHAR(20),
 		special_notes TEXT,
+		recreation_gov_username TEXT,
+		recreation_gov_password TEXT,
 		last_checked_at TIMESTAMP,
 		last_booked_at TIMESTAMP,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
