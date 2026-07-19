@@ -616,17 +616,17 @@ jcrawl uses **AES-256-GCM encryption** for storing sensitive credentials:
 
 ### Setting Up Encryption Key
 
-Generate a secure 32-byte key:
+The `ENCRYPTION_KEY` is a passphrase of any length; the AES-256 key is derived from it via SHA-256. Generate a strong one:
 ```bash
-openssl rand -hex 16  # Generates 32 hex characters (16 bytes when decoded)
-# Or for 32 bytes exactly:
-head -c 32 /dev/urandom | base64
+openssl rand -hex 32
 ```
 
 Set in `.env`:
 ```
-ENCRYPTION_KEY=your-generated-32-byte-key-here
+ENCRYPTION_KEY=your-generated-passphrase-here
 ```
+
+**Warning:** changing the passphrase later makes previously stored credentials unreadable.
 
 ### How Recreation.gov Login Works
 

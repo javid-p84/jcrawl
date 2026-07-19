@@ -114,11 +114,16 @@ func (h *WebSocketHub) BroadcastNotification(userID string, notif *models.Notifi
 	h.broadcast <- message
 }
 
-// HandleWebSocket handles a WebSocket connection
+// HandleWebSocket handles a WebSocket connection.
+// Browsers cannot set custom headers on WebSocket connects, so the user ID is
+// also accepted as a query parameter: /ws/notifications?user_id=<id>
 func (h *WebSocketHub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("X-User-ID")
 	if userID == "" {
-		http.Error(w, "X-User-ID header required", http.StatusUnauthorized)
+		userID = r.URL.Query().Get("user_id")
+	}
+	if userID == "" {
+		http.Error(w, "user_id query parameter or X-User-ID header required", http.StatusUnauthorized)
 		return
 	}
 

@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -176,12 +175,12 @@ func (rb *RecreationGovBooker) Book(ctx context.Context, url string, details *mo
 		chromedp.WaitVisible("body", chromedp.ByQuery),
 		chromedp.Sleep(2*time.Second),
 
-		// Try to find and click the availability button for the target date/time
-		chromedp.Click(fmt.Sprintf("button:contains('%s')", details.Date.Format("01/02")), chromedp.ByQuery),
+		// Find and click the availability button for the target date
+		chromedp.Click(fmt.Sprintf(`//button[contains(., '%s')]`, details.Date.Format("01/02")), chromedp.BySearch),
 		chromedp.Sleep(500*time.Millisecond),
 
 		// Continue reservation flow
-		chromedp.Click("button:contains('Continue')", chromedp.ByQuery),
+		chromedp.Click(`//button[contains(., 'Continue')]`, chromedp.BySearch),
 		chromedp.Sleep(500*time.Millisecond),
 
 		// Fill in personal information
@@ -194,24 +193,23 @@ func (rb *RecreationGovBooker) Book(ctx context.Context, url string, details *mo
 		chromedp.Sleep(500*time.Millisecond),
 
 		// Complete booking
-		chromedp.Click("button:contains('Complete')", chromedp.ByQuery),
+		chromedp.Click(`//button[contains(., 'Complete')]`, chromedp.BySearch),
 
 		// Wait for confirmation
-		chromedp.WaitVisible("div:contains('Confirmation')", chromedp.ByQuery),
+		chromedp.WaitVisible(`//div[contains(., 'Confirmation')]`, chromedp.BySearch),
 		chromedp.Sleep(1*time.Second),
 
 		// Extract confirmation
 		chromedp.TextContent("div[class*='confirmation']", &confirmationID),
 	)
 
+	// Never fabricate a confirmation: if the flow failed or no confirmation was
+	// captured, report failure so the user is not told a booking exists.
 	if err != nil {
-		log.Printf("Recreation.gov booking flow error: %v\n", err)
-		// Return a generated confirmation ID anyway
-		confirmationID = fmt.Sprintf("RECGOV-%d", time.Now().Unix())
+		return "", fmt.Errorf("recreation.gov booking flow failed: %w", err)
 	}
-
 	if confirmationID == "" {
-		confirmationID = fmt.Sprintf("RECGOV-%d", time.Now().Unix())
+		return "", fmt.Errorf("booking flow completed but no confirmation ID was found; treat as not booked")
 	}
 
 	return confirmationID, nil

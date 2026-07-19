@@ -11,11 +11,23 @@ import (
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/models"
 )
 
+// ContactInfo holds the delivery addresses for a user, resolved once per notification
+type ContactInfo struct {
+	UserID string
+	Email  string
+	Phone  string
+}
+
 // Channel is an interface for notification delivery
 type Channel interface {
-	Send(ctx context.Context, userID string, notif *models.Notification) error
+	Send(ctx context.Context, contact ContactInfo, notif *models.Notification) error
 	Name() string
 	IsConfigured() bool
+}
+
+// Broadcaster pushes notifications to live connections (implemented by api.WebSocketHub)
+type Broadcaster interface {
+	BroadcastNotification(userID string, notif *models.Notification)
 }
 
 // EmailChannel sends notifications via email
@@ -47,16 +59,12 @@ func (ec *EmailChannel) Name() string {
 }
 
 // Send sends notification via email
-func (ec *EmailChannel) Send(ctx context.Context, userID string, notif *models.Notification) error {
+func (ec *EmailChannel) Send(ctx context.Context, contact ContactInfo, notif *models.Notification) error {
 	if !ec.IsConfigured() {
 		return fmt.Errorf("email channel not configured")
 	}
-
-	// TODO: Get user email from database
-	// For now, use placeholder
-	userEmail := notif.Data["user_email"].(string)
-	if userEmail == "" {
-		return fmt.Errorf("user email not found")
+	if contact.Email == "" {
+		return fmt.Errorf("no email address for user %s", contact.UserID)
 	}
 
 	subject := notif.Title
@@ -66,11 +74,6 @@ func (ec *EmailChannel) Send(ctx context.Context, userID string, notif *models.N
   <div style="max-width: 600px; margin: 0 auto;">
     <h2>%s</h2>
     <p>%s</p>
-
-    <div style="background-color: #f0f0f0; padding: 15px; border-radius: 5px; margin: 20px 0;">
-      <p><strong>Details:</strong></p>
-      <pre>%v</pre>
-    </div>
 
     <p>
       <a href="http://localhost:8080/bookings"
@@ -82,26 +85,23 @@ func (ec *EmailChannel) Send(ctx context.Context, userID string, notif *models.N
     <hr style="margin-top: 30px; border: none; border-top: 1px solid #ddd;">
     <p style="font-size: 12px; color: #666;">
       This is an automated notification from jcrawl.
-      <a href="http://localhost:8080/preferences" style="color: #666;">Manage preferences</a>
     </p>
   </div>
 </body>
 </html>
-`, notif.Title, notif.Message, notif.Data)
+`, notif.Title, notif.Message)
 
 	auth := smtp.PlainAuth("", ec.FromEmail, ec.FromPassword, ec.SMTPHost)
 	addr := fmt.Sprintf("%s:%s", ec.SMTPHost, ec.SMTPPort)
 
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=\"UTF-8\"\r\n\r\n%s",
-		ec.FromEmail, userEmail, subject, body)
+		ec.FromEmail, contact.Email, subject, body)
 
-	err := smtp.SendMail(addr, auth, ec.FromEmail, []string{userEmail}, []byte(msg))
-	if err != nil {
-		log.Printf("Error sending email to %s: %v\n", userEmail, err)
-		return err
+	if err := smtp.SendMail(addr, auth, ec.FromEmail, []string{contact.Email}, []byte(msg)); err != nil {
+		return fmt.Errorf("sending email to %s: %w", contact.Email, err)
 	}
 
-	log.Printf("Email sent to %s: %s\n", userEmail, notif.Title)
+	log.Printf("Email sent to %s: %s\n", contact.Email, notif.Title)
 	return nil
 }
 
@@ -132,47 +132,33 @@ func (sc *SMSChannel) Name() string {
 }
 
 // Send sends notification via SMS
-func (sc *SMSChannel) Send(ctx context.Context, userID string, notif *models.Notification) error {
+func (sc *SMSChannel) Send(ctx context.Context, contact ContactInfo, notif *models.Notification) error {
 	if !sc.IsConfigured() {
 		return fmt.Errorf("sms channel not configured")
 	}
-
-	// TODO: Get user phone from database
-	userPhone := notif.Data["user_phone"].(string)
-	if userPhone == "" {
-		return fmt.Errorf("user phone not found")
+	if contact.Phone == "" {
+		return fmt.Errorf("no phone number for user %s", contact.UserID)
 	}
 
-	// TODO: Implement actual Twilio integration
-	// For now, just log it
-	message := fmt.Sprintf("🎉 %s: %s. View at http://localhost:8080/bookings", notif.Title, notif.Message)
-
-	log.Printf("SMS to be sent to %s: %s\n", userPhone, message)
-
-	// Placeholder for Twilio implementation
-	// client := twilio.NewRestClient()
-	// params := &openapi.CreateMessageParams{}
-	// params.SetTo(userPhone)
-	// params.SetFrom(sc.TwilioFromNumber)
-	// params.SetBody(message)
-	// resp, err := client.Api.CreateMessage(params)
-
+	// TODO: Implement actual Twilio API call
+	message := fmt.Sprintf("%s: %s", notif.Title, notif.Message)
+	log.Printf("SMS to be sent to %s: %s\n", contact.Phone, message)
 	return nil
 }
 
-// InAppChannel sends notifications via WebSocket
+// InAppChannel pushes notifications over live WebSocket connections
 type InAppChannel struct {
-	Hub interface{} // WebSocketHub (to avoid circular imports)
+	hub Broadcaster
 }
 
 // NewInAppChannel creates a new in-app notification channel
-func NewInAppChannel(hub interface{}) *InAppChannel {
-	return &InAppChannel{Hub: hub}
+func NewInAppChannel(hub Broadcaster) *InAppChannel {
+	return &InAppChannel{hub: hub}
 }
 
 // IsConfigured checks if in-app is configured
 func (ic *InAppChannel) IsConfigured() bool {
-	return ic.Hub != nil
+	return ic.hub != nil
 }
 
 // Name returns the channel name
@@ -181,30 +167,31 @@ func (ic *InAppChannel) Name() string {
 }
 
 // Send broadcasts via WebSocket
-func (ic *InAppChannel) Send(ctx context.Context, userID string, notif *models.Notification) error {
+func (ic *InAppChannel) Send(ctx context.Context, contact ContactInfo, notif *models.Notification) error {
 	if !ic.IsConfigured() {
 		return fmt.Errorf("in-app channel not configured")
 	}
 
-	// TODO: Cast hub and broadcast
-	// hub := ic.Hub.(*api.WebSocketHub)
-	// hub.BroadcastNotification(userID, notif)
-
-	log.Printf("In-app notification for %s: %s\n", userID, notif.Title)
+	ic.hub.BroadcastNotification(contact.UserID, notif)
 	return nil
 }
 
+// ContactLookup resolves a user's delivery addresses from their ID
+type ContactLookup func(userID string) (ContactInfo, error)
+
 // NotificationChannels manages all notification channels
 type NotificationChannels struct {
-	channels map[string]Channel
-	retries  int
+	channels      map[string]Channel
+	retries       int
+	contactLookup ContactLookup
 }
 
 // NewNotificationChannels creates a new channel manager
-func NewNotificationChannels(retries int) *NotificationChannels {
+func NewNotificationChannels(retries int, lookup ContactLookup) *NotificationChannels {
 	return &NotificationChannels{
-		channels: make(map[string]Channel),
-		retries:  retries,
+		channels:      make(map[string]Channel),
+		retries:       retries,
+		contactLookup: lookup,
 	}
 }
 
@@ -219,34 +206,46 @@ func (nc *NotificationChannels) Register(channel Channel) {
 }
 
 // SendToAll sends notification to all configured channels with retry logic
-func (nc *NotificationChannels) SendToAll(ctx context.Context, userID string, notif *models.Notification) error {
+func (nc *NotificationChannels) SendToAll(ctx context.Context, userID string, notif *models.Notification) {
 	if len(nc.channels) == 0 {
 		log.Println("Warning: No notification channels configured")
-		return fmt.Errorf("no notification channels available")
+		return
 	}
 
-	var lastErr error
-	for name, channel := range nc.channels {
-		go nc.sendWithRetry(ctx, channel, userID, notif)
+	contact := ContactInfo{UserID: userID}
+	if nc.contactLookup != nil {
+		resolved, err := nc.contactLookup(userID)
+		if err != nil {
+			log.Printf("Warning: could not resolve contact info for %s: %v\n", userID, err)
+		} else {
+			contact = resolved
+			contact.UserID = userID
+		}
 	}
 
-	return lastErr
+	for _, channel := range nc.channels {
+		go nc.sendWithRetry(ctx, channel, contact, notif)
+	}
 }
 
 // sendWithRetry sends with exponential backoff retry
-func (nc *NotificationChannels) sendWithRetry(ctx context.Context, channel Channel, userID string, notif *models.Notification) {
+func (nc *NotificationChannels) sendWithRetry(ctx context.Context, channel Channel, contact ContactInfo, notif *models.Notification) {
 	var err error
 	for attempt := 1; attempt <= nc.retries; attempt++ {
-		err = channel.Send(ctx, userID, notif)
+		err = channel.Send(ctx, contact, notif)
 		if err == nil {
-			log.Printf("✅ Notification sent via %s to user %s\n", channel.Name(), userID)
+			log.Printf("✅ Notification sent via %s to user %s\n", channel.Name(), contact.UserID)
 			return
 		}
 
 		if attempt < nc.retries {
 			backoff := time.Duration(attempt*attempt) * time.Second
 			log.Printf("⚠️ Retry %d/%d for %s in %v: %v\n", attempt, nc.retries, channel.Name(), backoff, err)
-			time.Sleep(backoff)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
 		}
 	}
 

@@ -54,14 +54,8 @@ func (s *Service) NotifyAvailabilityFound(ctx context.Context, userID string, pr
 		},
 	}
 
-	if err := s.notifRepo.CreateNotification(notif); err != nil {
-		log.Printf("Error creating availability notification: %v\n", err)
+	if err := s.create(ctx, notif); err != nil {
 		return err
-	}
-
-	// Send via all configured channels
-	if s.channels != nil {
-		go s.channels.SendToAll(ctx, userID, notif)
 	}
 
 	log.Printf("Notification created and queued: %s found availability\n", restaurant)
@@ -69,25 +63,24 @@ func (s *Service) NotifyAvailabilityFound(ctx context.Context, userID string, pr
 }
 
 // NotifyBookingSuccess creates a notification when booking succeeds
-func (s *Service) NotifyBookingSuccess(userID string, prefID string, bookingID string, restaurant string, date time.Time, time string, confirmationID string) error {
+func (s *Service) NotifyBookingSuccess(ctx context.Context, userID string, prefID string, bookingID string, restaurant string, date time.Time, timeSlot string, confirmationID string) error {
 	notif := &models.Notification{
 		UserID:       userID,
 		PreferenceID: prefID,
 		BookingID:    bookingID,
 		Type:         models.NotificationBookingSuccess,
 		Title:        "🎊 Booking Confirmed!",
-		Message:      fmt.Sprintf("Your reservation at %s for %s at %s is confirmed. Confirmation: %s", restaurant, date.Format("Jan 2, 2006"), time, confirmationID),
+		Message:      fmt.Sprintf("Your reservation at %s for %s at %s is confirmed. Confirmation: %s", restaurant, date.Format("Jan 2, 2006"), timeSlot, confirmationID),
 		Read:         false,
 		Data: map[string]interface{}{
 			"restaurant":      restaurant,
 			"date":            date.Format("2006-01-02"),
-			"time":            time,
+			"time":            timeSlot,
 			"confirmation_id": confirmationID,
 		},
 	}
 
-	if err := s.notifRepo.CreateNotification(notif); err != nil {
-		log.Printf("Error creating booking success notification: %v\n", err)
+	if err := s.create(ctx, notif); err != nil {
 		return err
 	}
 
@@ -96,7 +89,7 @@ func (s *Service) NotifyBookingSuccess(userID string, prefID string, bookingID s
 }
 
 // NotifyBookingFailed creates a notification when booking fails
-func (s *Service) NotifyBookingFailed(userID string, prefID string, restaurant string, date time.Time, timeSlot string, reason string) error {
+func (s *Service) NotifyBookingFailed(ctx context.Context, userID string, prefID string, restaurant string, date time.Time, timeSlot string, reason string) error {
 	notif := &models.Notification{
 		UserID:       userID,
 		PreferenceID: prefID,
@@ -112,8 +105,7 @@ func (s *Service) NotifyBookingFailed(userID string, prefID string, restaurant s
 		},
 	}
 
-	if err := s.notifRepo.CreateNotification(notif); err != nil {
-		log.Printf("Error creating booking failed notification: %v\n", err)
+	if err := s.create(ctx, notif); err != nil {
 		return err
 	}
 
@@ -122,7 +114,7 @@ func (s *Service) NotifyBookingFailed(userID string, prefID string, restaurant s
 }
 
 // NotifyCheckComplete creates a notification when a preference check completes
-func (s *Service) NotifyCheckComplete(userID string, prefID string, restaurant string, slotsFound int) error {
+func (s *Service) NotifyCheckComplete(ctx context.Context, userID string, prefID string, restaurant string, slotsFound int) error {
 	message := fmt.Sprintf("Check completed for %s. ", restaurant)
 	if slotsFound > 0 {
 		message += fmt.Sprintf("Found %d available slot(s).", slotsFound)
@@ -143,16 +135,11 @@ func (s *Service) NotifyCheckComplete(userID string, prefID string, restaurant s
 		},
 	}
 
-	if err := s.notifRepo.CreateNotification(notif); err != nil {
-		log.Printf("Error creating check complete notification: %v\n", err)
-		return err
-	}
-
-	return nil
+	return s.create(ctx, notif)
 }
 
 // NotifyError creates a notification when an error occurs
-func (s *Service) NotifyError(userID string, prefID string, restaurant string, errorMsg string) error {
+func (s *Service) NotifyError(ctx context.Context, userID string, prefID string, restaurant string, errorMsg string) error {
 	notif := &models.Notification{
 		UserID:       userID,
 		PreferenceID: prefID,
@@ -166,9 +153,18 @@ func (s *Service) NotifyError(userID string, prefID string, restaurant string, e
 		},
 	}
 
+	return s.create(ctx, notif)
+}
+
+// create persists the notification and dispatches it to all configured channels
+func (s *Service) create(ctx context.Context, notif *models.Notification) error {
 	if err := s.notifRepo.CreateNotification(notif); err != nil {
-		log.Printf("Error creating error notification: %v\n", err)
+		log.Printf("Error creating %s notification: %v\n", notif.Type, err)
 		return err
+	}
+
+	if s.channels != nil {
+		go s.channels.SendToAll(ctx, notif.UserID, notif)
 	}
 
 	return nil

@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -17,22 +18,19 @@ type Manager struct {
 }
 
 func NewCryptoManager() (*Manager, error) {
-	// Get encryption key from environment variable
-	// Key must be 32 bytes for AES-256
+	// The AES-256 key is derived from ENCRYPTION_KEY via SHA-256, so the
+	// passphrase can be any length. Changing the passphrase makes previously
+	// encrypted values unreadable.
 	keyStr := os.Getenv("ENCRYPTION_KEY")
 	if keyStr == "" {
 		log.Println("WARNING: ENCRYPTION_KEY not set, using default (NOT SECURE FOR PRODUCTION)")
-		// Generate a default key for development
-		keyStr = "default-insecure-key-32-bytes-1234"
+		keyStr = "jcrawl-dev-only-default-key"
 	}
 
-	key := []byte(keyStr)
-	if len(key) != 32 {
-		return nil, fmt.Errorf("ENCRYPTION_KEY must be exactly 32 bytes (got %d)", len(key))
-	}
+	key := sha256.Sum256([]byte(keyStr))
 
 	return &Manager{
-		key: key,
+		key: key[:],
 	}, nil
 }
 

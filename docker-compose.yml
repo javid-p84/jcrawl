@@ -36,8 +36,9 @@ services:
       SERVER_PORT: 8080
       SERVER_ENV: production
 
-      # Encryption (generate a secure key and put it here)
-      ENCRYPTION_KEY: "default-insecure-key-32-bytes-1234"
+      # Encryption passphrase (any length; the AES-256 key is derived via SHA-256).
+      # CHANGE THIS for production — changing it later makes stored credentials unreadable.
+      ENCRYPTION_KEY: "change-me-jcrawl-dev-passphrase"
 
       # JWT
       JWT_SECRET: "your-secret-key-change-me-in-production"

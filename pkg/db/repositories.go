@@ -2,8 +2,10 @@ package db
 
 import (
 	"database/sql"
-	"fmt"
+	"encoding/json"
 	"time"
+
+	"github.com/lib/pq"
 
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/models"
 )
@@ -36,6 +38,18 @@ func (r *UserRepository) GetUserByEmail(email string) (*models.User, error) {
 	return user, nil
 }
 
+func (r *UserRepository) GetUserByID(id string) (*models.User, error) {
+	user := &models.User{}
+	err := r.db.QueryRow(
+		"SELECT id, email, password, created_at, updated_at FROM users WHERE id = $1",
+		id,
+	).Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt, &user.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
 type PreferenceRepository struct {
 	db *sql.DB
 }
@@ -54,7 +68,7 @@ func (r *PreferenceRepository) CreatePreference(pref *models.UserPreference) err
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		RETURNING id, created_at, updated_at`,
 		pref.UserID, pref.GoogleLink, pref.RestaurantName, pref.DateRangeFrom, pref.DateRangeTo,
-		pref.DayPreference, pref.PartySize, pref.AutoBook, pref.NotifyOnly, pref.Active,
+		pq.Array(pref.DayPreference), pref.PartySize, pref.AutoBook, pref.NotifyOnly, pref.Active,
 		pref.GuestName, pref.GuestEmail, pref.GuestPhone, pref.SpecialNotes,
 		pref.RecreationGovUsername, pref.RecreationGovPassword, pref.RecreationGovOAuthToken,
 		pref.RecreationGovOAuthProvider, pref.RecreationGovOAuthRefresh, pref.RecreationGovOAuthExpiry,
@@ -82,7 +96,7 @@ func (r *PreferenceRepository) GetPreferencesByUserID(userID string) ([]models.U
 		var pref models.UserPreference
 		err := rows.Scan(
 			&pref.ID, &pref.UserID, &pref.GoogleLink, &pref.RestaurantName,
-			&pref.DateRangeFrom, &pref.DateRangeTo, &pref.DayPreference,
+			&pref.DateRangeFrom, &pref.DateRangeTo, pq.Array(&pref.DayPreference),
 			&pref.PartySize, &pref.AutoBook, &pref.NotifyOnly, &pref.Active, &pref.GuestName, &pref.GuestEmail,
 			&pref.GuestPhone, &pref.SpecialNotes, &pref.RecreationGovUsername, &pref.RecreationGovPassword,
 			&pref.RecreationGovOAuthToken, &pref.RecreationGovOAuthProvider, &pref.RecreationGovOAuthRefresh,
@@ -119,7 +133,7 @@ func (r *PreferenceRepository) GetActivePreferences() ([]models.UserPreference, 
 		var pref models.UserPreference
 		err := rows.Scan(
 			&pref.ID, &pref.UserID, &pref.GoogleLink, &pref.RestaurantName,
-			&pref.DateRangeFrom, &pref.DateRangeTo, &pref.DayPreference,
+			&pref.DateRangeFrom, &pref.DateRangeTo, pq.Array(&pref.DayPreference),
 			&pref.PartySize, &pref.AutoBook, &pref.NotifyOnly, &pref.Active, &pref.GuestName, &pref.GuestEmail,
 			&pref.GuestPhone, &pref.SpecialNotes, &pref.RecreationGovUsername, &pref.RecreationGovPassword,
 			&pref.RecreationGovOAuthToken, &pref.RecreationGovOAuthProvider, &pref.RecreationGovOAuthRefresh,
@@ -138,6 +152,51 @@ func (r *PreferenceRepository) UpdateLastChecked(preferenceID string) error {
 	_, err := r.db.Exec(
 		"UPDATE user_preferences SET last_checked_at = $1, updated_at = $1 WHERE id = $2",
 		now, preferenceID,
+	)
+	return err
+}
+
+// UpdateRecreationGovCredentials stores (already encrypted) username/password for a preference.
+// Scoped by user ID so one user cannot overwrite another user's preference.
+func (r *PreferenceRepository) UpdateRecreationGovCredentials(preferenceID, userID, username, encryptedPassword string) error {
+	res, err := r.db.Exec(
+		`UPDATE user_preferences
+		 SET recreation_gov_username = $1, recreation_gov_password = $2, updated_at = $3
+		 WHERE id = $4 AND user_id = $5`,
+		username, encryptedPassword, time.Now(), preferenceID, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// UpdateRecreationGovOAuth stores (already encrypted) OAuth token details for a preference.
+func (r *PreferenceRepository) UpdateRecreationGovOAuth(preferenceID, userID, encryptedToken, provider, encryptedRefresh string, expiry *time.Time) error {
+	res, err := r.db.Exec(
+		`UPDATE user_preferences
+		 SET recreation_gov_oauth_token = $1, recreation_gov_oauth_provider = $2,
+		     recreation_gov_oauth_refresh = $3, recreation_gov_oauth_expiry = $4, updated_at = $5
+		 WHERE id = $6 AND user_id = $7`,
+		encryptedToken, provider, encryptedRefresh, expiry, time.Now(), preferenceID, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// DeactivatePreference stops monitoring a preference (e.g. after a successful booking)
+func (r *PreferenceRepository) DeactivatePreference(preferenceID string) error {
+	_, err := r.db.Exec(
+		"UPDATE user_preferences SET active = false, last_booked_at = $1, updated_at = $1 WHERE id = $2",
+		time.Now(), preferenceID,
 	)
 	return err
 }
@@ -198,11 +257,17 @@ func NewNotificationRepository(db *sql.DB) *NotificationRepository {
 	return &NotificationRepository{db: db}
 }
 
+// nullIfEmpty converts an empty string to NULL for nullable UUID columns
+func nullIfEmpty(s string) sql.NullString {
+	return sql.NullString{String: s, Valid: s != ""}
+}
+
 func (r *NotificationRepository) CreateNotification(notif *models.Notification) error {
 	var dataJSON sql.NullString
 	if notif.Data != nil {
-		// Convert map to JSON - simplified for this example
-		dataJSON = sql.NullString{String: "{}", Valid: true}
+		if b, err := json.Marshal(notif.Data); err == nil {
+			dataJSON = sql.NullString{String: string(b), Valid: true}
+		}
 	}
 
 	err := r.db.QueryRow(
@@ -210,7 +275,7 @@ func (r *NotificationRepository) CreateNotification(notif *models.Notification) 
 		(user_id, preference_id, booking_id, type, title, message, data)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, created_at, updated_at`,
-		notif.UserID, notif.PreferenceID, notif.BookingID,
+		notif.UserID, nullIfEmpty(notif.PreferenceID), nullIfEmpty(notif.BookingID),
 		notif.Type, notif.Title, notif.Message, dataJSON,
 	).Scan(&notif.ID, &notif.CreatedAt, &notif.UpdatedAt)
 	return err
@@ -231,14 +296,17 @@ func (r *NotificationRepository) GetNotificationsByUserID(userID string, limit i
 	var notifs []models.Notification
 	for rows.Next() {
 		var notif models.Notification
+		var prefID, bookingID sql.NullString
 		err := rows.Scan(
-			&notif.ID, &notif.UserID, &notif.PreferenceID, &notif.BookingID,
+			&notif.ID, &notif.UserID, &prefID, &bookingID,
 			&notif.Type, &notif.Title, &notif.Message, &notif.Read, &notif.ReadAt,
 			&notif.CreatedAt, &notif.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
+		notif.PreferenceID = prefID.String
+		notif.BookingID = bookingID.String
 		notifs = append(notifs, notif)
 	}
 	return notifs, rows.Err()

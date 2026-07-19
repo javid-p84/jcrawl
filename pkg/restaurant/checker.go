@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jaavvviiiiddddd/jcrawl/pkg/db"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/models"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/scraper"
 )
@@ -29,7 +28,7 @@ func NewChecker() *Checker {
 }
 
 // CheckAvailability checks if a restaurant/facility has availability matching the preferences
-func (c *Checker) CheckAvailability(ctx context.Context, pref *db.UserPreference) ([]models.Availability, error) {
+func (c *Checker) CheckAvailability(ctx context.Context, pref *models.UserPreference) ([]models.Availability, error) {
 	log.Printf("Checking availability for: %s (%s)\n", pref.RestaurantName, pref.GoogleLink)
 
 	// Check if this is a recreation.gov link
@@ -80,7 +79,7 @@ func (c *Checker) CheckAvailability(ctx context.Context, pref *db.UserPreference
 }
 
 // checkRecreationGovAvailability checks recreation.gov using their API
-func (c *Checker) checkRecreationGovAvailability(ctx context.Context, pref *db.UserPreference) ([]models.Availability, error) {
+func (c *Checker) checkRecreationGovAvailability(ctx context.Context, pref *models.UserPreference) ([]models.Availability, error) {
 	recScraper := scraper.NewRecreationGovScraper()
 	availablesByDate, err := recScraper.CheckAvailability(ctx, pref)
 	if err != nil {

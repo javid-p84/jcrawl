@@ -2,10 +2,15 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
+	"database/sql"
+
+	"github.com/jaavvviiiiddddd/jcrawl/pkg/crypto"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/db"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/models"
 	"golang.org/x/crypto/bcrypt"
@@ -16,15 +21,25 @@ type Handler struct {
 	prefRepo  *db.PreferenceRepository
 	bookRepo  *db.BookingRepository
 	notifRepo *db.NotificationRepository
+	crypto    *crypto.Manager
 }
 
-func NewHandler(userRepo *db.UserRepository, prefRepo *db.PreferenceRepository, bookRepo *db.BookingRepository, notifRepo *db.NotificationRepository) *Handler {
+func NewHandler(userRepo *db.UserRepository, prefRepo *db.PreferenceRepository, bookRepo *db.BookingRepository, notifRepo *db.NotificationRepository, cryptoMgr *crypto.Manager) *Handler {
 	return &Handler{
 		userRepo:  userRepo,
 		prefRepo:  prefRepo,
 		bookRepo:  bookRepo,
 		notifRepo: notifRepo,
+		crypto:    cryptoMgr,
 	}
+}
+
+// parseDate accepts both date-only (2006-01-02) and RFC3339 formats
+func parseDate(s string) (time.Time, error) {
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		return t, nil
+	}
+	return time.Parse(time.RFC3339, s)
 }
 
 // RegisterRequest defines the registration payload
@@ -101,6 +116,22 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Login successful", "id": user.ID})
 }
 
+// CreatePreferenceRequest accepts human-friendly date strings (YYYY-MM-DD or RFC3339)
+type CreatePreferenceRequest struct {
+	GoogleLink     string `json:"google_link"`
+	RestaurantName string `json:"restaurant_name"`
+	DateRangeFrom  string `json:"date_range_from"`
+	DateRangeTo    string `json:"date_range_to"`
+	DayPreference  []int  `json:"day_preference"`
+	PartySize      int    `json:"party_size"`
+	AutoBook       *bool  `json:"auto_book"`
+	NotifyOnly     bool   `json:"notify_only"`
+	GuestName      string `json:"guest_name"`
+	GuestEmail     string `json:"guest_email"`
+	GuestPhone     string `json:"guest_phone"`
+	SpecialNotes   string `json:"special_notes"`
+}
+
 // CreatePreference creates a new monitoring preference
 func (h *Handler) CreatePreference(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -110,16 +141,61 @@ func (h *Handler) CreatePreference(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: Extract user ID from JWT token in Authorization header
 	userID := r.Header.Get("X-User-ID") // Placeholder
+	if userID == "" {
+		http.Error(w, "X-User-ID header required", http.StatusUnauthorized)
+		return
+	}
 
-	var pref models.UserPreference
-	if err := json.NewDecoder(r.Body).Decode(&pref); err != nil {
+	var req CreatePreferenceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
 
-	pref.UserID = userID
-	pref.Active = true
-	pref.AutoBook = true
+	if req.GoogleLink == "" {
+		http.Error(w, "google_link is required", http.StatusBadRequest)
+		return
+	}
+
+	dateFrom, err := parseDate(req.DateRangeFrom)
+	if err != nil {
+		http.Error(w, "date_range_from must be YYYY-MM-DD or RFC3339", http.StatusBadRequest)
+		return
+	}
+	dateTo, err := parseDate(req.DateRangeTo)
+	if err != nil {
+		http.Error(w, "date_range_to must be YYYY-MM-DD or RFC3339", http.StatusBadRequest)
+		return
+	}
+	if dateTo.Before(dateFrom) {
+		http.Error(w, "date_range_to must not be before date_range_from", http.StatusBadRequest)
+		return
+	}
+
+	autoBook := true
+	if req.AutoBook != nil {
+		autoBook = *req.AutoBook
+	}
+	if req.NotifyOnly {
+		autoBook = false
+	}
+
+	pref := models.UserPreference{
+		UserID:         userID,
+		GoogleLink:     req.GoogleLink,
+		RestaurantName: req.RestaurantName,
+		DateRangeFrom:  dateFrom,
+		DateRangeTo:    dateTo,
+		DayPreference:  req.DayPreference,
+		PartySize:      req.PartySize,
+		AutoBook:       autoBook,
+		NotifyOnly:     req.NotifyOnly,
+		Active:         true,
+		GuestName:      req.GuestName,
+		GuestEmail:     req.GuestEmail,
+		GuestPhone:     req.GuestPhone,
+		SpecialNotes:   req.SpecialNotes,
+	}
 
 	if err := h.prefRepo.CreatePreference(&pref); err != nil {
 		http.Error(w, "Failed to create preference", http.StatusInternalServerError)
@@ -273,10 +349,14 @@ func (h *Handler) UpdateRecreationGovCredentials(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// TODO: Extract user ID and preference ID from JWT token
-	userID := r.Header.Get("X-User-ID")       // Placeholder
+	// TODO: Extract user ID from JWT token
+	userID := r.Header.Get("X-User-ID") // Placeholder
 	prefID := r.URL.Query().Get("preference_id")
 
+	if userID == "" {
+		http.Error(w, "X-User-ID header required", http.StatusUnauthorized)
+		return
+	}
 	if prefID == "" {
 		http.Error(w, "Preference ID required", http.StatusBadRequest)
 		return
@@ -297,12 +377,25 @@ func (h *Handler) UpdateRecreationGovCredentials(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// TODO: Encrypt credentials before storing in database
-	// For now, just return success
+	encryptedPassword, err := h.crypto.Encrypt(req.Password)
+	if err != nil {
+		http.Error(w, "Failed to secure credentials", http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.prefRepo.UpdateRecreationGovCredentials(prefID, userID, req.Username, encryptedPassword); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Preference not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to store credentials", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"status": "ok",
-		"message": "Credentials updated. Please ensure your recreation.gov username and password are correct.",
+		"status":  "ok",
+		"message": "Credentials stored (encrypted). Please ensure your recreation.gov username and password are correct.",
 	})
 }
 
@@ -313,19 +406,24 @@ func (h *Handler) UpdateRecreationGovOAuthToken(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// TODO: Extract user ID and preference ID from JWT token
-	userID := r.Header.Get("X-User-ID")       // Placeholder
+	// TODO: Extract user ID from JWT token
+	userID := r.Header.Get("X-User-ID") // Placeholder
 	prefID := r.URL.Query().Get("preference_id")
 
+	if userID == "" {
+		http.Error(w, "X-User-ID header required", http.StatusUnauthorized)
+		return
+	}
 	if prefID == "" {
 		http.Error(w, "Preference ID required", http.StatusBadRequest)
 		return
 	}
 
 	var req struct {
-		OAuthToken   string `json:"oauth_token"`
+		OAuthToken    string `json:"oauth_token"`
 		OAuthProvider string `json:"oauth_provider"` // google, facebook, recreation.gov
-		OAuthRefresh string `json:"oauth_refresh,omitempty"`
+		OAuthRefresh  string `json:"oauth_refresh,omitempty"`
+		OAuthExpiry   string `json:"oauth_expiry,omitempty"` // RFC3339
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -342,12 +440,44 @@ func (h *Handler) UpdateRecreationGovOAuthToken(w http.ResponseWriter, r *http.R
 		req.OAuthProvider = "recreation.gov"
 	}
 
-	// TODO: Encrypt token before storing in database
-	// TODO: Validate token with recreation.gov
+	var expiry *time.Time
+	if req.OAuthExpiry != "" {
+		t, err := time.Parse(time.RFC3339, req.OAuthExpiry)
+		if err != nil {
+			http.Error(w, "oauth_expiry must be RFC3339", http.StatusBadRequest)
+			return
+		}
+		expiry = &t
+	}
+
+	encryptedToken, err := h.crypto.Encrypt(req.OAuthToken)
+	if err != nil {
+		http.Error(w, "Failed to secure token", http.StatusInternalServerError)
+		return
+	}
+
+	encryptedRefresh := ""
+	if req.OAuthRefresh != "" {
+		encryptedRefresh, err = h.crypto.Encrypt(req.OAuthRefresh)
+		if err != nil {
+			http.Error(w, "Failed to secure refresh token", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if err := h.prefRepo.UpdateRecreationGovOAuth(prefID, userID, encryptedToken, req.OAuthProvider, encryptedRefresh, expiry); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Preference not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to store token", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"status": "ok",
-		"message": fmt.Sprintf("OAuth token stored for provider: %s", req.OAuthProvider),
+		"status":  "ok",
+		"message": fmt.Sprintf("OAuth token stored (encrypted) for provider: %s", req.OAuthProvider),
 	})
 }
 

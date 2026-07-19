@@ -9,6 +9,7 @@ import (
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/booker"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/db"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/models"
+	"github.com/jaavvviiiiddddd/jcrawl/pkg/notification"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/restaurant"
 )
 
@@ -17,6 +18,7 @@ type CheckWorker struct {
 	bookRepo  *db.BookingRepository
 	checker   *restaurant.Checker
 	booker    *booker.Booker
+	notifier  *notification.Service
 	interval  time.Duration
 	mu        sync.Mutex
 	isRunning bool
@@ -27,6 +29,7 @@ func NewCheckWorker(
 	bookRepo *db.BookingRepository,
 	checker *restaurant.Checker,
 	bookr *booker.Booker,
+	notifier *notification.Service,
 	interval time.Duration,
 ) *CheckWorker {
 	return &CheckWorker{
@@ -34,6 +37,7 @@ func NewCheckWorker(
 		bookRepo: bookRepo,
 		checker:  checker,
 		booker:   bookr,
+		notifier: notifier,
 		interval: interval,
 	}
 }
@@ -104,7 +108,7 @@ func (w *CheckWorker) checkAll(ctx context.Context) {
 }
 
 // checkPreference checks availability for a single preference
-func (w *CheckWorker) checkPreference(ctx context.Context, pref *db.UserPreference) {
+func (w *CheckWorker) checkPreference(ctx context.Context, pref *models.UserPreference) {
 	log.Printf("Checking preference: %s (%s)\n", pref.ID, pref.RestaurantName)
 
 	// Update last checked time
@@ -139,7 +143,7 @@ func (w *CheckWorker) checkPreference(ctx context.Context, pref *db.UserPreferen
 }
 
 // handleAutoBooking attempts to automatically book the first available slot
-func (w *CheckWorker) handleAutoBooking(ctx context.Context, pref *db.UserPreference, availabilities []models.Availability) {
+func (w *CheckWorker) handleAutoBooking(ctx context.Context, pref *models.UserPreference, availabilities []models.Availability) {
 	if len(availabilities) == 0 {
 		return
 	}
@@ -196,15 +200,34 @@ func (w *CheckWorker) handleAutoBooking(ctx context.Context, pref *db.UserPrefer
 		log.Printf("Error saving booking history: %v\n", err)
 	}
 
-	// Deactivate preference after successful booking
+	// Notify the user about the outcome
+	if w.notifier != nil {
+		if result.Success {
+			if err := w.notifier.NotifyBookingSuccess(ctx, pref.UserID, pref.ID, booking.ID, pref.RestaurantName, slot.Date, slot.Time, result.ConfirmationID); err != nil {
+				log.Printf("Error sending booking success notification: %v\n", err)
+			}
+		} else {
+			reason := result.Message
+			if result.Error != nil {
+				reason = result.Error.Error()
+			}
+			if err := w.notifier.NotifyBookingFailed(ctx, pref.UserID, pref.ID, pref.RestaurantName, slot.Date, slot.Time, reason); err != nil {
+				log.Printf("Error sending booking failed notification: %v\n", err)
+			}
+		}
+	}
+
+	// Deactivate preference after successful booking so we stop re-booking it
 	if result.Success {
 		log.Printf("Deactivating preference %s after successful booking\n", pref.ID)
-		// TODO: Add method to deactivate preference
+		if err := w.prefRepo.DeactivatePreference(pref.ID); err != nil {
+			log.Printf("Error deactivating preference %s: %v\n", pref.ID, err)
+		}
 	}
 }
 
 // handleNotifyOnly sends notifications about availability without booking
-func (w *CheckWorker) handleNotifyOnly(ctx context.Context, pref *db.UserPreference, availabilities []models.Availability) {
+func (w *CheckWorker) handleNotifyOnly(ctx context.Context, pref *models.UserPreference, availabilities []models.Availability) {
 	log.Printf("Notify-only mode: Found %d slots for %s\n", len(availabilities), pref.RestaurantName)
 
 	// Group availabilities by date
@@ -214,15 +237,20 @@ func (w *CheckWorker) handleNotifyOnly(ctx context.Context, pref *db.UserPrefere
 		availablesByDate[dateStr] = append(availablesByDate[dateStr], avail.Time)
 	}
 
+	if w.notifier == nil {
+		log.Println("Warning: notification service not configured; availability found but user not notified")
+		return
+	}
+
 	// Send notification for each unique date with availability
 	for dateStr, timeSlots := range availablesByDate {
-		date, _ := time.Parse("2006-01-02", dateStr)
-		log.Printf("Sending notification for %s: %d available times\n", dateStr, len(timeSlots))
-
-		// TODO: Create and send notification via notification service
-		// For now, log that we would send notification
-		log.Printf("Would notify user %s: %s has availability on %s at: %v\n",
-			pref.UserID, pref.RestaurantName, dateStr, timeSlots)
+		date, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			continue
+		}
+		if err := w.notifier.NotifyAvailabilityFound(ctx, pref.UserID, pref.ID, pref.RestaurantName, date, timeSlots); err != nil {
+			log.Printf("Error sending availability notification for %s: %v\n", pref.ID, err)
+		}
 	}
 }
 

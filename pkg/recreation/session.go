@@ -13,8 +13,6 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-var _ = fmt.Sprintf // Ensure fmt is imported
-
 type SessionManager struct {
 	client      *http.Client
 	username    string
@@ -34,7 +32,7 @@ const (
 
 // NewSessionManager creates a new recreation.gov session manager with password auth
 func NewSessionManager(username, password string) *SessionManager {
-	jar, _ := cookiejar.New()
+	jar, _ := cookiejar.New(nil)
 
 	client := &http.Client{
 		Jar:     jar,
@@ -235,9 +233,10 @@ func (sm *SessionManager) IsUsingOAuth() bool {
 // Logout clears the session
 func (sm *SessionManager) Logout() {
 	sm.isLoggedIn = false
-	// Clear cookies if using password auth
-	if sm.authMethod == AuthMethodPassword && sm.client.Jar != nil {
-		sm.client.Jar.(*cookiejar.Jar).RemoveAll()
+	// cookiejar has no way to clear cookies, so replace the jar entirely
+	if sm.authMethod == AuthMethodPassword {
+		jar, _ := cookiejar.New(nil)
+		sm.client.Jar = jar
 	}
 	log.Println("Logged out from recreation.gov")
 }

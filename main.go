@@ -61,11 +61,19 @@ func main() {
 	wsHub.Start()
 	log.Println("WebSocket hub started")
 
-	// Initialize notification channels
-	notificationChannels := notification.NewNotificationChannels(3) // 3 retries
+	// Initialize notification channels; contact info is resolved from the user record
+	contactLookup := func(userID string) (notification.ContactInfo, error) {
+		user, err := userRepo.GetUserByID(userID)
+		if err != nil {
+			return notification.ContactInfo{}, err
+		}
+		return notification.ContactInfo{UserID: userID, Email: user.Email}, nil
+	}
+	notificationChannels := notification.NewNotificationChannels(3, contactLookup) // 3 retries
 	notificationChannels.Register(notification.NewEmailChannel())
 	notificationChannels.Register(notification.NewSMSChannel())
 	notificationChannels.Register(notification.NewInAppChannel(wsHub))
+	notifService := notification.NewServiceWithChannels(notifRepo, notificationChannels)
 
 	// Initialize services
 	checker := restaurant.NewChecker()
@@ -73,8 +81,8 @@ func main() {
 	if err != nil {
 		log.Printf("Warning: Failed to initialize booker: %v\n", err)
 	}
-	checkWorker := worker.NewCheckWorker(prefRepo, bookRepo, checker, bookr, 5*time.Minute)
-	apiHandler := api.NewHandler(userRepo, prefRepo, bookRepo, notifRepo)
+	checkWorker := worker.NewCheckWorker(prefRepo, bookRepo, checker, bookr, notifService, 5*time.Minute)
+	apiHandler := api.NewHandler(userRepo, prefRepo, bookRepo, notifRepo, cryptoMgr)
 
 	// Setup routes
 	router := mux.NewRouter()

@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/jaavvviiiiddddd/jcrawl/pkg/db"
+	"github.com/jaavvviiiiddddd/jcrawl/pkg/models"
 )
 
 type RecreationGovScraper struct {
@@ -44,7 +44,7 @@ func (rs *RecreationGovScraper) ExtractFacilityID(url string) (string, error) {
 }
 
 // CheckAvailability checks recreation.gov for available campsites
-func (rs *RecreationGovScraper) CheckAvailability(ctx context.Context, pref *db.UserPreference) (map[string][]string, error) {
+func (rs *RecreationGovScraper) CheckAvailability(ctx context.Context, pref *models.UserPreference) (map[string][]string, error) {
 	facilityID, err := rs.ExtractFacilityID(pref.GoogleLink)
 	if err != nil {
 		return nil, err

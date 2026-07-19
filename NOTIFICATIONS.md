@@ -9,12 +9,10 @@ Instant notifications delivered via WebSocket connection.
 
 **Connect:**
 ```javascript
+// Browsers cannot set custom headers on WebSocket connections,
+// so the user ID is passed as a query parameter.
 const userId = "your-user-id";
-const ws = new WebSocket(`ws://localhost:8080/ws/notifications`, {
-  headers: {
-    'X-User-ID': userId
-  }
-});
+const ws = new WebSocket(`ws://localhost:8080/ws/notifications?user_id=${userId}`);
 
 ws.onopen = () => {
   console.log('Connected to notifications');
@@ -247,8 +245,7 @@ export default function NotificationHandler() {
   useEffect(() => {
     const userId = localStorage.getItem('userId');
     const ws = new WebSocket(
-      `ws://${window.location.host}/ws/notifications`,
-      userId
+      `ws://${window.location.host}/ws/notifications?user_id=${userId}`
     );
 
     ws.onopen = () => {
