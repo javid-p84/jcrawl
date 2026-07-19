@@ -1,6 +1,7 @@
 package notification
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -11,6 +12,15 @@ import (
 
 type Service struct {
 	notifRepo *db.NotificationRepository
+	channels  *NotificationChannels
+}
+
+// NewService creates a new notification service with channels
+func NewServiceWithChannels(notifRepo *db.NotificationRepository, channels *NotificationChannels) *Service {
+	return &Service{
+		notifRepo: notifRepo,
+		channels:  channels,
+	}
 }
 
 func NewService(notifRepo *db.NotificationRepository) *Service {
@@ -19,8 +29,8 @@ func NewService(notifRepo *db.NotificationRepository) *Service {
 	}
 }
 
-// NotifyAvailabilityFound creates a notification when availability is discovered
-func (s *Service) NotifyAvailabilityFound(userID string, prefID string, restaurant string, date time.Time, timeSlots []string) error {
+// NotifyAvailabilityFound creates and sends notification when availability is discovered
+func (s *Service) NotifyAvailabilityFound(ctx context.Context, userID string, prefID string, restaurant string, date time.Time, timeSlots []string) error {
 	timeStr := ""
 	if len(timeSlots) > 0 {
 		if len(timeSlots) <= 3 {
@@ -49,7 +59,12 @@ func (s *Service) NotifyAvailabilityFound(userID string, prefID string, restaura
 		return err
 	}
 
-	log.Printf("Notification created: %s found availability\n", restaurant)
+	// Send via all configured channels
+	if s.channels != nil {
+		go s.channels.SendToAll(ctx, userID, notif)
+	}
+
+	log.Printf("Notification created and queued: %s found availability\n", restaurant)
 	return nil
 }
 

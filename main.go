@@ -16,6 +16,7 @@ import (
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/booker"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/crypto"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/db"
+	"github.com/jaavvviiiiddddd/jcrawl/pkg/notification"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/restaurant"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/worker"
 )
@@ -55,6 +56,17 @@ func main() {
 	bookRepo := db.NewBookingRepository(database)
 	notifRepo := db.NewNotificationRepository(database)
 
+	// Initialize WebSocket hub
+	wsHub := api.NewWebSocketHub()
+	wsHub.Start()
+	log.Println("WebSocket hub started")
+
+	// Initialize notification channels
+	notificationChannels := notification.NewNotificationChannels(3) // 3 retries
+	notificationChannels.Register(notification.NewEmailChannel())
+	notificationChannels.Register(notification.NewSMSChannel())
+	notificationChannels.Register(notification.NewInAppChannel(wsHub))
+
 	// Initialize services
 	checker := restaurant.NewChecker()
 	bookr, err := booker.NewBooker()
@@ -90,6 +102,9 @@ func main() {
 	// Recreation.gov credentials endpoints
 	router.HandleFunc("/api/v1/recreation/credentials/password", apiHandler.UpdateRecreationGovCredentials).Methods("POST")
 	router.HandleFunc("/api/v1/recreation/credentials/oauth", apiHandler.UpdateRecreationGovOAuthToken).Methods("POST")
+
+	// WebSocket endpoint for real-time notifications
+	router.HandleFunc("/ws/notifications", wsHub.HandleWebSocket)
 
 	// Setup HTTP server
 	server := &http.Server{
