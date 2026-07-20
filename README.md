@@ -145,7 +145,7 @@ Server starts on `http://localhost:8080`
 ### 1. Register & Login
 
 ```bash
-# Register
+# Register (one-time)
 curl -X POST http://localhost:8080/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
@@ -153,7 +153,7 @@ curl -X POST http://localhost:8080/api/v1/auth/register \
     "password": "secure_password"
   }'
 
-# Login — returns a JWT; save it for all subsequent requests
+# Login — returns a JWT; save it for every request below
 TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
@@ -162,11 +162,34 @@ TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
   }' | jq -r .token)
 ```
 
-All `/api/v1` endpoints (except register/login) require the token via `Authorization: Bearer $TOKEN`. Tokens expire after 24 hours.
+Every `/api/v1` endpoint except register/login requires `Authorization: Bearer $TOKEN`. Tokens expire after 24 hours — log in again to get a new one.
 
-### 2. Create a Preference (Example: Recreation.gov)
+### 2. Create a Preference
 
-**Option A: Notifications Only (No Login Required)**
+A preference is "watch this booking page, on this schedule, and react this way." Any response is JSON; capture the `id` field (`PREF_ID` below) to manage it later.
+
+**Restaurant example** (Resy, OpenTable, Google Reserve, or any other booking page):
+```bash
+curl -X POST http://localhost:8080/api/v1/preferences \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "google_link": "https://www.opentable.com/r/some-restaurant",
+    "restaurant_name": "Restaurant Name",
+    "date_range_from": "2024-01-01",
+    "date_range_to": "2024-01-31",
+    "day_preference": [5, 6],
+    "party_size": 2,
+    "guest_name": "Jane Doe",
+    "guest_email": "jane@example.com",
+    "guest_phone": "+15551234567",
+    "auto_book": true
+  }'
+```
+
+**Recreation.gov example**, with a choice of three modes:
+
+**Mode A — Notify only.** No recreation.gov account needed at all; jcrawl just tells you when a spot opens and you book it yourself.
 ```bash
 curl -X POST http://localhost:8080/api/v1/preferences \
   -H "Content-Type: application/json" \
@@ -178,17 +201,13 @@ curl -X POST http://localhost:8080/api/v1/preferences \
     "date_range_to": "2024-07-31",
     "day_preference": [5, 6],
     "party_size": 4,
-    "notify_only": true,
-    "auto_book": false
+    "notify_only": true
   }'
 ```
 
-**Option B: Auto-Book with Password**
-
-This is currently the only auth method that can complete an actual recreation.gov booking — the worker logs in with these credentials in the same browser session used to make the reservation.
-
+**Mode B — Auto-book with your recreation.gov password.** Set `auto_book: true` and `guest_name`/`guest_email`/`guest_phone` on the preference (as in the restaurant example), then attach credentials. This is the only mode that can currently complete a real booking — jcrawl logs into recreation.gov with these credentials in the same browser session it uses to reserve the site.
 ```bash
-curl -X POST http://localhost:8080/api/v1/recreation/credentials/password?preference_id=PREF_UUID \
+curl -X POST "http://localhost:8080/api/v1/recreation/credentials/password?preference_id=PREF_ID" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
@@ -197,12 +216,9 @@ curl -X POST http://localhost:8080/api/v1/recreation/credentials/password?prefer
   }'
 ```
 
-**Option C: Auto-Book with OAuth Token**
-
-The token is stored encrypted and can be used to check availability via the recreation.gov API, but there is no verified way to turn a bearer token into an authenticated *browser* session, which the booking flow requires. Auto-book will fail with a clear error if only a token is configured — use Option B (password) for actual bookings, or `notify_only` if you'd rather book manually.
-
+**Mode C — Auto-book with an OAuth token.** Stored encrypted and usable for availability checks, but there's no verified way to turn a bearer token into a logged-in browser session, so a booking attempt with only a token configured fails with a clear error rather than pretending to succeed. Use Mode B for actual bookings today.
 ```bash
-curl -X POST http://localhost:8080/api/v1/recreation/credentials/oauth?preference_id=PREF_UUID \
+curl -X POST "http://localhost:8080/api/v1/recreation/credentials/oauth?preference_id=PREF_ID" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
@@ -211,10 +227,40 @@ curl -X POST http://localhost:8080/api/v1/recreation/credentials/oauth?preferenc
   }'
 ```
 
-### 3. Check Notifications
+### 3. Manage Your Preferences
 
 ```bash
-# Get all notifications
+# List everything you're watching
+curl http://localhost:8080/api/v1/preferences \
+  -H "Authorization: Bearer $TOKEN"
+
+# Update — send only the fields you're changing
+curl -X PATCH "http://localhost:8080/api/v1/preferences/PREF_ID" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"party_size": 6}'
+
+# Pause monitoring without deleting it
+curl -X PATCH "http://localhost:8080/api/v1/preferences/PREF_ID" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"active": false}'
+
+# Resume it later
+curl -X PATCH "http://localhost:8080/api/v1/preferences/PREF_ID" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"active": true}'
+
+# Delete it entirely
+curl -X DELETE "http://localhost:8080/api/v1/preferences/PREF_ID" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### 4. Check Notifications
+
+```bash
+# Get all notifications (paginated)
 curl http://localhost:8080/api/v1/notifications \
   -H "Authorization: Bearer $TOKEN"
 
@@ -222,17 +268,25 @@ curl http://localhost:8080/api/v1/notifications \
 curl http://localhost:8080/api/v1/notifications/unread-count \
   -H "Authorization: Bearer $TOKEN"
 
-# Mark as read
-curl -X POST http://localhost:8080/api/v1/notifications/mark-as-read?id=NOTIF_UUID \
+# Mark one as read
+curl -X POST "http://localhost:8080/api/v1/notifications/mark-as-read?id=NOTIF_ID" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Mark all as read
+curl -X POST http://localhost:8080/api/v1/notifications/mark-all-as-read \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-### 4. View Bookings
+For instant push instead of polling, connect a WebSocket client to `ws://localhost:8080/ws/notifications?token=$TOKEN` — see [NOTIFICATIONS.md](NOTIFICATIONS.md) for a full example.
+
+### 5. View Booking History
 
 ```bash
 curl http://localhost:8080/api/v1/bookings \
   -H "Authorization: Bearer $TOKEN"
 ```
+
+A booking only ever shows `status: "booked"` if the automation captured a real confirmation ID from the site — nothing is recorded as successful unless it actually happened.
 
 ## API Endpoints
 
@@ -265,31 +319,7 @@ curl http://localhost:8080/api/v1/bookings \
 ### Health
 - `GET /health` - Service health check
 
-## Example Usage
-
-```bash
-# Register
-curl -X POST http://localhost:8080/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","password":"secure123"}'
-
-# Add restaurant preference
-curl -X POST http://localhost:8080/api/v1/preferences \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{
-    "google_link": "https://www.google.com/maps/...",
-    "restaurant_name": "Restaurant Name",
-    "date_range_from": "2024-01-01",
-    "date_range_to": "2024-01-31",
-    "day_preference": [5, 6],
-    "party_size": 2
-  }'
-
-# Get preferences
-curl http://localhost:8080/api/v1/preferences \
-  -H "Authorization: Bearer $TOKEN"
-```
+See [How to Use](#how-to-use) above for a complete walkthrough with real request bodies.
 
 ## Project Structure
 
@@ -500,110 +530,29 @@ Recreation.gov support includes:
    - Auto-books with guest info
    - Saves confirmation
 
-3. User gets confirmation:
-   - Email sent (future feature)
-   - Booking record in database
-   - Preference auto-deactivated
+3. User gets notified:
+   - Instantly via WebSocket, plus email/SMS if configured (see NOTIFICATIONS.md)
+   - Booking record saved in the database
+   - Preference auto-deactivated (for the auto-book case)
 ```
 
 ## Booking Modes
 
-jcrawl supports **THREE flexible usage modes**:
+jcrawl supports **three usage modes** per preference — see [How to Use](#how-to-use) for the actual request bodies. Summary:
 
-### 1️⃣ Notifications Only (No Login Required)
-- Check availability without storing any credentials
-- Get in-app notifications when campsites become available
-- Manually book through recreation.gov website
-- Perfect for casual checking
-
-**Setup:**
-```bash
-curl -X POST http://localhost:8080/api/v1/preferences \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{
-    "google_link": "https://www.recreation.gov/camping/campgrounds/123456/",
-    "restaurant_name": "Yosemite Valley Campground",
-    "date_range_from": "2024-07-01",
-    "date_range_to": "2024-07-31",
-    "day_preference": [5, 6],
-    "party_size": 4,
-    "notify_only": true,
-    "auto_book": false
-  }'
-```
-
-**Result:**
-- ✅ No credentials needed
-- ✅ Get notifications when availability found
-- ✅ Browse/click to book manually
-- ⏭️ Simple, low-risk
-
-### 2️⃣ Auto-Book with Option 1: Username/Password
-- Store email/password securely
-- Automatically book when availability is found
-- Fastest way to secure a campsite
-
-### 3️⃣ Auto-Book with Option 2: OAuth Token
-- Store recreation.gov OAuth token
-- Automatically book with token authentication
-- No password stored
+| Mode | Credentials needed | Books automatically? |
+|---|---|---|
+| **Notify only** (`notify_only: true`) | None | No — you book manually when notified |
+| **Auto-book, password** | recreation.gov username/password | Yes — the only mode that can complete a real booking today |
+| **Auto-book, OAuth token** | recreation.gov OAuth token | No — refused with an explanatory error; the token can check availability but can't drive an authenticated browser session |
 
 ## Recreation.gov Authentication Options
 
-jcrawl supports **TWO secure authentication methods** (when using auto-book):
+See [How to Use](#how-to-use) for the request bodies to store each credential type. Both are encrypted (AES-256-GCM) before being saved and are never returned by the API.
 
-### Option 1: Username/Password (Encrypted)
-Store your recreation.gov email and password securely:
-```bash
-curl -X POST http://localhost:8080/api/v1/recreation/credentials/password?preference_id=UUID \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{
-    "username": "your-email@example.com",
-    "password": "your-recreation-gov-password"
-  }'
-```
+**Username/password** — simple, and the only option that currently completes bookings. Downside: you're storing a password (encrypted) and have to update it if it changes.
 
-**Pros:**
-- ✅ Simple setup
-- ✅ AES-256-GCM encrypted
-- ✅ Works with all recreation.gov features
-
-**Cons:**
-- ⚠️ Requires password storage
-- ⚠️ Password changes require update
-
-### Option 2: OAuth Token
-Use a recreation.gov session token (copy from browser):
-```bash
-curl -X POST http://localhost:8080/api/v1/recreation/credentials/oauth?preference_id=UUID \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{
-    "oauth_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "oauth_provider": "recreation.gov",
-    "oauth_refresh": "optional-refresh-token"
-  }'
-```
-
-**How to get your OAuth token:**
-1. Login to recreation.gov
-2. Open browser DevTools (F12)
-3. Go to Application → Cookies
-4. Find `JSESSIONID` or auth token
-5. Copy and paste into jcrawl
-
-**Pros:**
-- ✅ No password stored
-- ✅ Works with Google/Facebook OAuth
-- ✅ Can use existing logged-in session
-- ✅ Tokens can be revoked independently
-
-**Cons:**
-- ⚠️ Tokens expire (typically 24-30 days)
-- ⚠️ Need to refresh periodically
-- ⚠️ Slight manual setup required
+**OAuth token** — no password stored, and can be revoked independently of your account password. Get it from an existing logged-in browser session (DevTools → Application → Cookies, or your session/auth cookie) and paste it in. Downside: tokens expire (recreation.gov's typically last a few weeks) and, as above, can't currently complete an actual booking — only availability checks.
 
 ## Security & Encryption
 
@@ -668,7 +617,7 @@ Memory cleared
 
 **Store recreation.gov credentials:**
 ```bash
-curl -X POST http://localhost:8080/api/v1/recreation/credentials?preference_id=UUID \
+curl -X POST "http://localhost:8080/api/v1/recreation/credentials/password?preference_id=UUID" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
@@ -681,7 +630,7 @@ curl -X POST http://localhost:8080/api/v1/recreation/credentials?preference_id=U
 ```json
 {
   "status": "ok",
-  "message": "Credentials updated. Please ensure your recreation.gov username and password are correct."
+  "message": "Credentials stored (encrypted). Please ensure your recreation.gov username and password are correct."
 }
 ```
 
