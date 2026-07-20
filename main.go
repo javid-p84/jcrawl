@@ -56,8 +56,11 @@ func main() {
 	bookRepo := db.NewBookingRepository(database)
 	notifRepo := db.NewNotificationRepository(database)
 
-	// Initialize WebSocket hub
-	wsHub := api.NewWebSocketHub()
+	// Initialize authentication
+	authSvc := api.NewAuthService()
+
+	// Initialize WebSocket hub (connections authenticate with a JWT)
+	wsHub := api.NewWebSocketHub(authSvc.ValidateToken)
 	wsHub.Start()
 	log.Println("WebSocket hub started")
 
@@ -82,7 +85,7 @@ func main() {
 		log.Printf("Warning: Failed to initialize booker: %v\n", err)
 	}
 	checkWorker := worker.NewCheckWorker(prefRepo, bookRepo, checker, bookr, notifService, 5*time.Minute)
-	apiHandler := api.NewHandler(userRepo, prefRepo, bookRepo, notifRepo, cryptoMgr)
+	apiHandler := api.NewHandler(userRepo, prefRepo, bookRepo, notifRepo, cryptoMgr, authSvc)
 
 	// Setup routes
 	router := mux.NewRouter()
@@ -90,28 +93,32 @@ func main() {
 	// Health check
 	router.HandleFunc("/health", apiHandler.Health).Methods("GET")
 
-	// Auth endpoints
+	// Auth endpoints (public)
 	router.HandleFunc("/api/v1/auth/register", apiHandler.Register).Methods("POST")
 	router.HandleFunc("/api/v1/auth/login", apiHandler.Login).Methods("POST")
 
+	// All other /api/v1 endpoints require a valid JWT (Authorization: Bearer <token>)
+	protected := router.PathPrefix("/api/v1").Subrouter()
+	protected.Use(authSvc.Middleware)
+
 	// Preference endpoints
-	router.HandleFunc("/api/v1/preferences", apiHandler.CreatePreference).Methods("POST")
-	router.HandleFunc("/api/v1/preferences", apiHandler.GetPreferences).Methods("GET")
+	protected.HandleFunc("/preferences", apiHandler.CreatePreference).Methods("POST")
+	protected.HandleFunc("/preferences", apiHandler.GetPreferences).Methods("GET")
 
 	// Booking endpoints
-	router.HandleFunc("/api/v1/bookings", apiHandler.GetBookings).Methods("GET")
+	protected.HandleFunc("/bookings", apiHandler.GetBookings).Methods("GET")
 
 	// Notification endpoints
-	router.HandleFunc("/api/v1/notifications", apiHandler.GetNotifications).Methods("GET")
-	router.HandleFunc("/api/v1/notifications/unread-count", apiHandler.GetUnreadNotificationCount).Methods("GET")
-	router.HandleFunc("/api/v1/notifications/mark-as-read", apiHandler.MarkNotificationAsRead).Methods("POST")
-	router.HandleFunc("/api/v1/notifications/mark-all-as-read", apiHandler.MarkAllNotificationsAsRead).Methods("POST")
+	protected.HandleFunc("/notifications", apiHandler.GetNotifications).Methods("GET")
+	protected.HandleFunc("/notifications/unread-count", apiHandler.GetUnreadNotificationCount).Methods("GET")
+	protected.HandleFunc("/notifications/mark-as-read", apiHandler.MarkNotificationAsRead).Methods("POST")
+	protected.HandleFunc("/notifications/mark-all-as-read", apiHandler.MarkAllNotificationsAsRead).Methods("POST")
 
 	// Recreation.gov credentials endpoints
-	router.HandleFunc("/api/v1/recreation/credentials/password", apiHandler.UpdateRecreationGovCredentials).Methods("POST")
-	router.HandleFunc("/api/v1/recreation/credentials/oauth", apiHandler.UpdateRecreationGovOAuthToken).Methods("POST")
+	protected.HandleFunc("/recreation/credentials/password", apiHandler.UpdateRecreationGovCredentials).Methods("POST")
+	protected.HandleFunc("/recreation/credentials/oauth", apiHandler.UpdateRecreationGovOAuthToken).Methods("POST")
 
-	// WebSocket endpoint for real-time notifications
+	// WebSocket endpoint for real-time notifications (authenticates via ?token=<jwt>)
 	router.HandleFunc("/ws/notifications", wsHub.HandleWebSocket)
 
 	// Setup HTTP server

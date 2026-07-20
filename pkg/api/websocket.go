@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,11 +24,12 @@ var upgrader = websocket.Upgrader{
 
 // WebSocketHub manages all WebSocket connections
 type WebSocketHub struct {
-	clients      map[string]map[*Client]bool // userID -> clients
-	broadcast    chan *NotificationMessage
-	register     chan *Client
-	unregister   chan *Client
-	mu           sync.RWMutex
+	clients       map[string]map[*Client]bool // userID -> clients
+	broadcast     chan *NotificationMessage
+	register      chan *Client
+	unregister    chan *Client
+	validateToken func(token string) (string, error)
+	mu            sync.RWMutex
 }
 
 // Client represents a WebSocket connection
@@ -46,13 +48,15 @@ type NotificationMessage struct {
 	Timestamp int64       `json:"timestamp"`
 }
 
-// NewWebSocketHub creates a new WebSocket hub
-func NewWebSocketHub() *WebSocketHub {
+// NewWebSocketHub creates a new WebSocket hub. validateToken authenticates
+// connecting clients (token -> user ID); typically AuthService.ValidateToken.
+func NewWebSocketHub(validateToken func(token string) (string, error)) *WebSocketHub {
 	return &WebSocketHub{
-		clients:    make(map[string]map[*Client]bool),
-		broadcast:  make(chan *NotificationMessage, 256),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
+		clients:       make(map[string]map[*Client]bool),
+		broadcast:     make(chan *NotificationMessage, 256),
+		register:      make(chan *Client),
+		unregister:    make(chan *Client),
+		validateToken: validateToken,
 	}
 }
 
@@ -115,15 +119,23 @@ func (h *WebSocketHub) BroadcastNotification(userID string, notif *models.Notifi
 }
 
 // HandleWebSocket handles a WebSocket connection.
-// Browsers cannot set custom headers on WebSocket connects, so the user ID is
-// also accepted as a query parameter: /ws/notifications?user_id=<id>
+// Browsers cannot set custom headers on WebSocket connects, so the JWT is
+// passed as a query parameter: /ws/notifications?token=<jwt>
 func (h *WebSocketHub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	userID := r.Header.Get("X-User-ID")
-	if userID == "" {
-		userID = r.URL.Query().Get("user_id")
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
+			token = strings.TrimPrefix(authHeader, "Bearer ")
+		}
 	}
-	if userID == "" {
-		http.Error(w, "user_id query parameter or X-User-ID header required", http.StatusUnauthorized)
+	if token == "" {
+		http.Error(w, "token query parameter or Authorization header required", http.StatusUnauthorized)
+		return
+	}
+
+	userID, err := h.validateToken(token)
+	if err != nil {
+		http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 		return
 	}
 

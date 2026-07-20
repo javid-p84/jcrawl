@@ -22,16 +22,27 @@ type Handler struct {
 	bookRepo  *db.BookingRepository
 	notifRepo *db.NotificationRepository
 	crypto    *crypto.Manager
+	auth      *AuthService
 }
 
-func NewHandler(userRepo *db.UserRepository, prefRepo *db.PreferenceRepository, bookRepo *db.BookingRepository, notifRepo *db.NotificationRepository, cryptoMgr *crypto.Manager) *Handler {
+func NewHandler(userRepo *db.UserRepository, prefRepo *db.PreferenceRepository, bookRepo *db.BookingRepository, notifRepo *db.NotificationRepository, cryptoMgr *crypto.Manager, auth *AuthService) *Handler {
 	return &Handler{
 		userRepo:  userRepo,
 		prefRepo:  prefRepo,
 		bookRepo:  bookRepo,
 		notifRepo: notifRepo,
 		crypto:    cryptoMgr,
+		auth:      auth,
 	}
+}
+
+// requireUserID returns the authenticated user ID or writes a 401 and returns ""
+func (h *Handler) requireUserID(w http.ResponseWriter, r *http.Request) string {
+	userID := UserIDFromContext(r.Context())
+	if userID == "" {
+		http.Error(w, "Authentication required", http.StatusUnauthorized)
+	}
+	return userID
 }
 
 // parseDate accepts both date-only (2006-01-02) and RFC3339 formats
@@ -111,9 +122,18 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Generate JWT token and return it
+	token, expiresAt, err := h.auth.GenerateToken(user.ID)
+	if err != nil {
+		http.Error(w, "Failed to issue token", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Login successful", "id": user.ID})
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"token":      token,
+		"user_id":    user.ID,
+		"expires_at": expiresAt.Format(time.RFC3339),
+	})
 }
 
 // CreatePreferenceRequest accepts human-friendly date strings (YYYY-MM-DD or RFC3339)
@@ -139,10 +159,8 @@ func (h *Handler) CreatePreference(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Extract user ID from JWT token in Authorization header
-	userID := r.Header.Get("X-User-ID") // Placeholder
+	userID := h.requireUserID(w, r)
 	if userID == "" {
-		http.Error(w, "X-User-ID header required", http.StatusUnauthorized)
 		return
 	}
 
@@ -214,8 +232,10 @@ func (h *Handler) GetPreferences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Extract user ID from JWT token
-	userID := r.Header.Get("X-User-ID") // Placeholder
+	userID := h.requireUserID(w, r)
+	if userID == "" {
+		return
+	}
 
 	prefs, err := h.prefRepo.GetPreferencesByUserID(userID)
 	if err != nil {
@@ -234,8 +254,10 @@ func (h *Handler) GetBookings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Extract user ID from JWT token
-	userID := r.Header.Get("X-User-ID") // Placeholder
+	userID := h.requireUserID(w, r)
+	if userID == "" {
+		return
+	}
 
 	bookings, err := h.bookRepo.GetBookingsByUserID(userID)
 	if err != nil {
@@ -254,8 +276,10 @@ func (h *Handler) GetNotifications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Extract user ID from JWT token
-	userID := r.Header.Get("X-User-ID") // Placeholder
+	userID := h.requireUserID(w, r)
+	if userID == "" {
+		return
+	}
 
 	// Get query parameters for pagination
 	limit := 20
@@ -288,8 +312,10 @@ func (h *Handler) GetUnreadNotificationCount(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// TODO: Extract user ID from JWT token
-	userID := r.Header.Get("X-User-ID") // Placeholder
+	userID := h.requireUserID(w, r)
+	if userID == "" {
+		return
+	}
 
 	count, err := h.notifRepo.GetUnreadCount(userID)
 	if err != nil {
@@ -308,13 +334,22 @@ func (h *Handler) MarkNotificationAsRead(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	userID := h.requireUserID(w, r)
+	if userID == "" {
+		return
+	}
+
 	notifID := r.URL.Query().Get("id")
 	if notifID == "" {
 		http.Error(w, "Notification ID required", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.notifRepo.MarkAsRead(notifID); err != nil {
+	if err := h.notifRepo.MarkAsRead(notifID, userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Notification not found", http.StatusNotFound)
+			return
+		}
 		http.Error(w, "Failed to update notification", http.StatusInternalServerError)
 		return
 	}
@@ -330,8 +365,10 @@ func (h *Handler) MarkAllNotificationsAsRead(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// TODO: Extract user ID from JWT token
-	userID := r.Header.Get("X-User-ID") // Placeholder
+	userID := h.requireUserID(w, r)
+	if userID == "" {
+		return
+	}
 
 	if err := h.notifRepo.MarkAllAsRead(userID); err != nil {
 		http.Error(w, "Failed to update notifications", http.StatusInternalServerError)
@@ -349,14 +386,11 @@ func (h *Handler) UpdateRecreationGovCredentials(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// TODO: Extract user ID from JWT token
-	userID := r.Header.Get("X-User-ID") // Placeholder
-	prefID := r.URL.Query().Get("preference_id")
-
+	userID := h.requireUserID(w, r)
 	if userID == "" {
-		http.Error(w, "X-User-ID header required", http.StatusUnauthorized)
 		return
 	}
+	prefID := r.URL.Query().Get("preference_id")
 	if prefID == "" {
 		http.Error(w, "Preference ID required", http.StatusBadRequest)
 		return
@@ -406,14 +440,11 @@ func (h *Handler) UpdateRecreationGovOAuthToken(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// TODO: Extract user ID from JWT token
-	userID := r.Header.Get("X-User-ID") // Placeholder
-	prefID := r.URL.Query().Get("preference_id")
-
+	userID := h.requireUserID(w, r)
 	if userID == "" {
-		http.Error(w, "X-User-ID header required", http.StatusUnauthorized)
 		return
 	}
+	prefID := r.URL.Query().Get("preference_id")
 	if prefID == "" {
 		http.Error(w, "Preference ID required", http.StatusBadRequest)
 		return

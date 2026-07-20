@@ -10,9 +10,9 @@ Instant notifications delivered via WebSocket connection.
 **Connect:**
 ```javascript
 // Browsers cannot set custom headers on WebSocket connections,
-// so the user ID is passed as a query parameter.
-const userId = "your-user-id";
-const ws = new WebSocket(`ws://localhost:8080/ws/notifications?user_id=${userId}`);
+// so the JWT (from /api/v1/auth/login) is passed as a query parameter.
+const token = localStorage.getItem('token');
+const ws = new WebSocket(`ws://localhost:8080/ws/notifications?token=${token}`);
 
 ws.onopen = () => {
   console.log('Connected to notifications');
@@ -167,7 +167,7 @@ TWILIO_FROM_NUMBER=+15551234567
 **Check notification status:**
 ```bash
 curl http://localhost:8080/api/v1/notifications \
-  -H "X-User-ID: your-user-id"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 **Response:**
@@ -198,11 +198,11 @@ curl http://localhost:8080/api/v1/notifications \
 ### WebSocket Not Connecting
 
 ```javascript
-// Verify X-User-ID header is set
-const userId = localStorage.getItem('userId');
-console.log('Connecting as:', userId);
+// Verify the JWT is present and not expired (obtain it from /api/v1/auth/login)
+const token = localStorage.getItem('token');
+console.log('Token present:', Boolean(token));
 
-// Check WebSocket URL
+// Check WebSocket URL includes ?token=
 console.log(ws.url);
 
 // Check browser console for errors
@@ -243,9 +243,9 @@ export default function NotificationHandler() {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    const userId = localStorage.getItem('userId');
+    const token = localStorage.getItem('token');
     const ws = new WebSocket(
-      `ws://${window.location.host}/ws/notifications?user_id=${userId}`
+      `ws://${window.location.host}/ws/notifications?token=${token}`
     );
 
     ws.onopen = () => {

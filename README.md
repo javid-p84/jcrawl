@@ -153,14 +153,16 @@ curl -X POST http://localhost:8080/api/v1/auth/register \
     "password": "secure_password"
   }'
 
-# Login
-curl -X POST http://localhost:8080/api/v1/auth/login \
+# Login — returns a JWT; save it for all subsequent requests
+TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "user@example.com",
     "password": "secure_password"
-  }'
+  }' | jq -r .token)
 ```
+
+All `/api/v1` endpoints (except register/login) require the token via `Authorization: Bearer $TOKEN`. Tokens expire after 24 hours.
 
 ### 2. Create a Preference (Example: Recreation.gov)
 
@@ -168,7 +170,7 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
 ```bash
 curl -X POST http://localhost:8080/api/v1/preferences \
   -H "Content-Type: application/json" \
-  -H "X-User-ID: your-user-id" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{
     "google_link": "https://www.recreation.gov/camping/campgrounds/232447/",
     "restaurant_name": "Yosemite Valley Campground",
@@ -185,7 +187,7 @@ curl -X POST http://localhost:8080/api/v1/preferences \
 ```bash
 curl -X POST http://localhost:8080/api/v1/recreation/credentials/password?preference_id=PREF_UUID \
   -H "Content-Type: application/json" \
-  -H "X-User-ID: your-user-id" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{
     "username": "your-email@example.com",
     "password": "your-recreation-gov-password"
@@ -196,7 +198,7 @@ curl -X POST http://localhost:8080/api/v1/recreation/credentials/password?prefer
 ```bash
 curl -X POST http://localhost:8080/api/v1/recreation/credentials/oauth?preference_id=PREF_UUID \
   -H "Content-Type: application/json" \
-  -H "X-User-ID: your-user-id" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{
     "oauth_token": "your-session-token",
     "oauth_provider": "recreation.gov"
@@ -208,22 +210,22 @@ curl -X POST http://localhost:8080/api/v1/recreation/credentials/oauth?preferenc
 ```bash
 # Get all notifications
 curl http://localhost:8080/api/v1/notifications \
-  -H "X-User-ID: your-user-id"
+  -H "Authorization: Bearer $TOKEN"
 
 # Get unread count
 curl http://localhost:8080/api/v1/notifications/unread-count \
-  -H "X-User-ID: your-user-id"
+  -H "Authorization: Bearer $TOKEN"
 
 # Mark as read
 curl -X POST http://localhost:8080/api/v1/notifications/mark-as-read?id=NOTIF_UUID \
-  -H "X-User-ID: your-user-id"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ### 4. View Bookings
 
 ```bash
 curl http://localhost:8080/api/v1/bookings \
-  -H "X-User-ID: your-user-id"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## API Endpoints
@@ -266,7 +268,7 @@ curl -X POST http://localhost:8080/api/v1/auth/register \
 # Add restaurant preference
 curl -X POST http://localhost:8080/api/v1/preferences \
   -H "Content-Type: application/json" \
-  -H "X-User-ID: <user-id>" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{
     "google_link": "https://www.google.com/maps/...",
     "restaurant_name": "Restaurant Name",
@@ -278,7 +280,7 @@ curl -X POST http://localhost:8080/api/v1/preferences \
 
 # Get preferences
 curl http://localhost:8080/api/v1/preferences \
-  -H "X-User-ID: <user-id>"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Project Structure
@@ -510,7 +512,7 @@ jcrawl supports **THREE flexible usage modes**:
 ```bash
 curl -X POST http://localhost:8080/api/v1/preferences \
   -H "Content-Type: application/json" \
-  -H "X-User-ID: user-uuid" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{
     "google_link": "https://www.recreation.gov/camping/campgrounds/123456/",
     "restaurant_name": "Yosemite Valley Campground",
@@ -548,7 +550,7 @@ Store your recreation.gov email and password securely:
 ```bash
 curl -X POST http://localhost:8080/api/v1/recreation/credentials/password?preference_id=UUID \
   -H "Content-Type: application/json" \
-  -H "X-User-ID: user-uuid" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{
     "username": "your-email@example.com",
     "password": "your-recreation-gov-password"
@@ -569,7 +571,7 @@ Use a recreation.gov session token (copy from browser):
 ```bash
 curl -X POST http://localhost:8080/api/v1/recreation/credentials/oauth?preference_id=UUID \
   -H "Content-Type: application/json" \
-  -H "X-User-ID: user-uuid" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{
     "oauth_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "oauth_provider": "recreation.gov",
@@ -660,7 +662,7 @@ Memory cleared
 ```bash
 curl -X POST http://localhost:8080/api/v1/recreation/credentials?preference_id=UUID \
   -H "Content-Type: application/json" \
-  -H "X-User-ID: user-uuid" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{
     "username": "your-email@example.com",
     "password": "your-recreation-gov-password"

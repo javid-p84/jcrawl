@@ -321,13 +321,21 @@ func (r *NotificationRepository) GetUnreadCount(userID string) (int, error) {
 	return count, err
 }
 
-func (r *NotificationRepository) MarkAsRead(notificationID string) error {
+// MarkAsRead marks a notification as read, scoped by owner so users cannot
+// modify other users' notifications. Returns sql.ErrNoRows if not found.
+func (r *NotificationRepository) MarkAsRead(notificationID, userID string) error {
 	now := time.Now()
-	_, err := r.db.Exec(
-		"UPDATE notifications SET read = true, read_at = $1, updated_at = $1 WHERE id = $2",
-		now, notificationID,
+	res, err := r.db.Exec(
+		"UPDATE notifications SET read = true, read_at = $1, updated_at = $1 WHERE id = $2 AND user_id = $3",
+		now, notificationID, userID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (r *NotificationRepository) MarkAllAsRead(userID string) error {
