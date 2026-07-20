@@ -30,6 +30,17 @@ type BookingDetails struct {
 	GuestEmail   string
 	GuestPhone   string
 	SpecialNotes string
+
+	// Recreation.gov authentication, decrypted by the caller just before the
+	// booking attempt. Populated only in memory — never logged or persisted.
+	RecreationGovUsername   string
+	RecreationGovPassword   string
+	RecreationGovOAuthToken string
+}
+
+// HasRecreationGovCredentials reports whether either auth method is populated
+func (b *BookingDetails) HasRecreationGovCredentials() bool {
+	return (b.RecreationGovUsername != "" && b.RecreationGovPassword != "") || b.RecreationGovOAuthToken != ""
 }
 
 // BookingResult contains the result of a booking attempt

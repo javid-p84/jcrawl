@@ -184,6 +184,9 @@ curl -X POST http://localhost:8080/api/v1/preferences \
 ```
 
 **Option B: Auto-Book with Password**
+
+This is currently the only auth method that can complete an actual recreation.gov booking — the worker logs in with these credentials in the same browser session used to make the reservation.
+
 ```bash
 curl -X POST http://localhost:8080/api/v1/recreation/credentials/password?preference_id=PREF_UUID \
   -H "Content-Type: application/json" \
@@ -195,6 +198,9 @@ curl -X POST http://localhost:8080/api/v1/recreation/credentials/password?prefer
 ```
 
 **Option C: Auto-Book with OAuth Token**
+
+The token is stored encrypted and can be used to check availability via the recreation.gov API, but there is no verified way to turn a bearer token into an authenticated *browser* session, which the booking flow requires. Auto-book will fail with a clear error if only a token is configured — use Option B (password) for actual bookings, or `notify_only` if you'd rather book manually.
+
 ```bash
 curl -X POST http://localhost:8080/api/v1/recreation/credentials/oauth?preference_id=PREF_UUID \
   -H "Content-Type: application/json" \
@@ -237,6 +243,8 @@ curl http://localhost:8080/api/v1/bookings \
 ### Preferences
 - `POST /api/v1/preferences` - Create monitoring preference
 - `GET /api/v1/preferences` - List user's preferences
+- `PATCH /api/v1/preferences/<id>` - Update a preference (partial; only send fields you're changing). Setting `"active": false` pauses monitoring, `"active": true` resumes it.
+- `DELETE /api/v1/preferences/<id>` - Delete a preference
 
 ### Bookings
 - `GET /api/v1/bookings` - List user's booking history

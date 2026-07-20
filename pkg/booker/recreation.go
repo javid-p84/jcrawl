@@ -140,9 +140,23 @@ func (rb *RecreationGovBooker) ParseAvailableSites(facilityID string, availabili
 	return sites, nil
 }
 
-// Book completes a recreation.gov reservation
+// Book completes a recreation.gov reservation. Requires an authenticated
+// session: recreation.gov reservations are tied to a logged-in account, so
+// details must carry either a username/password or an OAuth token (see
+// models.BookingDetails.HasRecreationGovCredentials).
 func (rb *RecreationGovBooker) Book(ctx context.Context, url string, details *models.BookingDetails) (string, error) {
 	log.Println("Booking via Recreation.gov...")
+
+	if !details.HasRecreationGovCredentials() {
+		return "", fmt.Errorf("no recreation.gov credentials provided; cannot complete a booking without an authenticated session")
+	}
+	if details.RecreationGovOAuthToken != "" && details.RecreationGovUsername == "" {
+		// An OAuth bearer token authenticates API requests (see pkg/recreation.OAuthManager),
+		// but this booking flow drives a real browser session, which needs cookies, not a
+		// header. There is no verified way to turn a bearer token into a browser session
+		// for recreation.gov, so refuse rather than run a flow that will silently fail.
+		return "", fmt.Errorf("OAuth-token auto-booking is not supported for recreation.gov yet; store a username/password instead, or use notify_only")
+	}
 
 	// Extract facility ID
 	facilityID, err := rb.ExtractFacilityID(url)
@@ -165,8 +179,28 @@ func (rb *RecreationGovBooker) Book(ctx context.Context, url string, details *mo
 	browserCtx, cancel := chromedp.NewContext(allocCtx)
 	defer cancel()
 
-	bookCtx, cancel := context.WithTimeout(browserCtx, 60*time.Second)
+	bookCtx, cancel := context.WithTimeout(browserCtx, 90*time.Second)
 	defer cancel()
+
+	// Log in first, in the same browser context, so the session cookies set by
+	// login carry over to the booking navigation below.
+	var loggedIn bool
+	err = chromedp.Run(bookCtx,
+		chromedp.Navigate("https://www.recreation.gov/auth/login"),
+		chromedp.WaitVisible("form", chromedp.ByQuery),
+		chromedp.Sleep(1*time.Second),
+		chromedp.SetValue("input[type='email']", details.RecreationGovUsername, chromedp.ByQuery),
+		chromedp.SetValue("input[type='password']", details.RecreationGovPassword, chromedp.ByQuery),
+		chromedp.Click("button[type='submit']", chromedp.ByQuery),
+		chromedp.Sleep(3*time.Second),
+		chromedp.Evaluate(`!document.querySelector("input[type='password']")`, &loggedIn),
+	)
+	if err != nil {
+		return "", fmt.Errorf("recreation.gov login failed: %w", err)
+	}
+	if !loggedIn {
+		return "", fmt.Errorf("recreation.gov login did not succeed (still on login form); check stored credentials")
+	}
 
 	var confirmationID string
 

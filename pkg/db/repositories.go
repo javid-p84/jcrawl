@@ -147,6 +147,74 @@ func (r *PreferenceRepository) GetActivePreferences() ([]models.UserPreference, 
 	return prefs, rows.Err()
 }
 
+// GetPreferenceByID fetches a single preference, scoped by owner. Returns
+// sql.ErrNoRows if it doesn't exist or belongs to a different user.
+func (r *PreferenceRepository) GetPreferenceByID(id, userID string) (*models.UserPreference, error) {
+	var pref models.UserPreference
+	err := r.db.QueryRow(
+		`SELECT id, user_id, google_link, restaurant_name, date_range_from, date_range_to,
+		 day_preference, party_size, auto_book, notify_only, active, guest_name, guest_email, guest_phone,
+		 special_notes, recreation_gov_username, recreation_gov_password, recreation_gov_oauth_token,
+		 recreation_gov_oauth_provider, recreation_gov_oauth_refresh, recreation_gov_oauth_expiry,
+		 last_checked_at, last_booked_at, created_at, updated_at
+		 FROM user_preferences WHERE id = $1 AND user_id = $2`,
+		id, userID,
+	).Scan(
+		&pref.ID, &pref.UserID, &pref.GoogleLink, &pref.RestaurantName,
+		&pref.DateRangeFrom, &pref.DateRangeTo, pq.Array(&pref.DayPreference),
+		&pref.PartySize, &pref.AutoBook, &pref.NotifyOnly, &pref.Active, &pref.GuestName, &pref.GuestEmail,
+		&pref.GuestPhone, &pref.SpecialNotes, &pref.RecreationGovUsername, &pref.RecreationGovPassword,
+		&pref.RecreationGovOAuthToken, &pref.RecreationGovOAuthProvider, &pref.RecreationGovOAuthRefresh,
+		&pref.RecreationGovOAuthExpiry, &pref.LastCheckedAt, &pref.LastBookedAt, &pref.CreatedAt, &pref.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	// Don't return sensitive data to callers building an API response
+	pref.RecreationGovPassword = ""
+	pref.RecreationGovOAuthToken = ""
+	pref.RecreationGovOAuthRefresh = ""
+	return &pref, nil
+}
+
+// UpdatePreference updates the user-editable fields of a preference, scoped
+// by owner. Credential fields are untouched — use UpdateRecreationGovCredentials
+// or UpdateRecreationGovOAuth for those. Returns sql.ErrNoRows if the
+// preference doesn't exist or belongs to a different user.
+func (r *PreferenceRepository) UpdatePreference(pref *models.UserPreference) error {
+	res, err := r.db.Exec(
+		`UPDATE user_preferences SET
+		 google_link = $1, restaurant_name = $2, date_range_from = $3, date_range_to = $4,
+		 day_preference = $5, party_size = $6, auto_book = $7, notify_only = $8, active = $9,
+		 guest_name = $10, guest_email = $11, guest_phone = $12, special_notes = $13, updated_at = $14
+		 WHERE id = $15 AND user_id = $16`,
+		pref.GoogleLink, pref.RestaurantName, pref.DateRangeFrom, pref.DateRangeTo,
+		pq.Array(pref.DayPreference), pref.PartySize, pref.AutoBook, pref.NotifyOnly, pref.Active,
+		pref.GuestName, pref.GuestEmail, pref.GuestPhone, pref.SpecialNotes, time.Now(),
+		pref.ID, pref.UserID,
+	)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// DeletePreference removes a preference, scoped by owner. Returns
+// sql.ErrNoRows if it doesn't exist or belongs to a different user.
+func (r *PreferenceRepository) DeletePreference(id, userID string) error {
+	res, err := r.db.Exec("DELETE FROM user_preferences WHERE id = $1 AND user_id = $2", id, userID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (r *PreferenceRepository) UpdateLastChecked(preferenceID string) error {
 	now := time.Now()
 	_, err := r.db.Exec(

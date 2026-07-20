@@ -84,7 +84,7 @@ func main() {
 	if err != nil {
 		log.Printf("Warning: Failed to initialize booker: %v\n", err)
 	}
-	checkWorker := worker.NewCheckWorker(prefRepo, bookRepo, checker, bookr, notifService, 5*time.Minute)
+	checkWorker := worker.NewCheckWorker(prefRepo, bookRepo, checker, bookr, notifService, cryptoMgr, 5*time.Minute)
 	apiHandler := api.NewHandler(userRepo, prefRepo, bookRepo, notifRepo, cryptoMgr, authSvc)
 
 	// Setup routes
@@ -104,6 +104,8 @@ func main() {
 	// Preference endpoints
 	protected.HandleFunc("/preferences", apiHandler.CreatePreference).Methods("POST")
 	protected.HandleFunc("/preferences", apiHandler.GetPreferences).Methods("GET")
+	protected.HandleFunc("/preferences/{id}", apiHandler.UpdatePreference).Methods("PATCH")
+	protected.HandleFunc("/preferences/{id}", apiHandler.DeletePreference).Methods("DELETE")
 
 	// Booking endpoints
 	protected.HandleFunc("/bookings", apiHandler.GetBookings).Methods("GET")

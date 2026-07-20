@@ -2,15 +2,24 @@ package worker
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/booker"
+	"github.com/jaavvviiiiddddd/jcrawl/pkg/crypto"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/db"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/models"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/notification"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/restaurant"
+)
+
+var (
+	errNoCryptoConfigured        = errors.New("recreation.gov auto-book requires credentials but the server has no encryption manager configured")
+	errNoRecreationGovCredentials = errors.New("recreation.gov auto-book is enabled but no username/password or OAuth token is configured for this preference; add credentials via /api/v1/recreation/credentials, or switch to notify_only")
 )
 
 type CheckWorker struct {
@@ -19,6 +28,7 @@ type CheckWorker struct {
 	checker   *restaurant.Checker
 	booker    *booker.Booker
 	notifier  *notification.Service
+	crypto    *crypto.Manager
 	interval  time.Duration
 	mu        sync.Mutex
 	isRunning bool
@@ -30,6 +40,7 @@ func NewCheckWorker(
 	checker *restaurant.Checker,
 	bookr *booker.Booker,
 	notifier *notification.Service,
+	cryptoMgr *crypto.Manager,
 	interval time.Duration,
 ) *CheckWorker {
 	return &CheckWorker{
@@ -38,6 +49,7 @@ func NewCheckWorker(
 		checker:  checker,
 		booker:   bookr,
 		notifier: notifier,
+		crypto:   cryptoMgr,
 		interval: interval,
 	}
 }
@@ -168,6 +180,23 @@ func (w *CheckWorker) handleAutoBooking(ctx context.Context, pref *models.UserPr
 		SpecialNotes: pref.SpecialNotes,
 	}
 
+	// Recreation.gov requires an authenticated session to book; decrypt
+	// whichever credentials are stored on the preference. If this is a
+	// recreation.gov preference with none configured, fail loudly via
+	// notification instead of silently attempting (and failing) a booking.
+	isRecreationGov := strings.Contains(pref.GoogleLink, "recreation.gov")
+	if isRecreationGov {
+		if err := w.populateRecreationGovCredentials(pref, details); err != nil {
+			log.Printf("Skipping auto-book for %s: %v\n", pref.ID, err)
+			if w.notifier != nil {
+				if nerr := w.notifier.NotifyBookingFailed(ctx, pref.UserID, pref.ID, pref.RestaurantName, slot.Date, slot.Time, err.Error()); nerr != nil {
+					log.Printf("Error sending credentials-missing notification: %v\n", nerr)
+				}
+			}
+			return
+		}
+	}
+
 	log.Printf("Attempting auto-book for %s: %s at %s\n", pref.RestaurantName, slot.Date.Format("2006-01-02"), slot.Time)
 
 	// Attempt booking
@@ -224,6 +253,38 @@ func (w *CheckWorker) handleAutoBooking(ctx context.Context, pref *models.UserPr
 			log.Printf("Error deactivating preference %s: %v\n", pref.ID, err)
 		}
 	}
+}
+
+// populateRecreationGovCredentials decrypts whichever recreation.gov auth
+// method is configured on the preference and copies it onto details. Prefers
+// username/password over an OAuth token when both are present. Returns an
+// error if neither is configured or decryption fails, so the caller can skip
+// the booking attempt instead of running a session-less flow doomed to fail.
+func (w *CheckWorker) populateRecreationGovCredentials(pref *models.UserPreference, details *models.BookingDetails) error {
+	if w.crypto == nil {
+		return errNoCryptoConfigured
+	}
+
+	if pref.RecreationGovUsername != "" && pref.RecreationGovPassword != "" {
+		password, err := w.crypto.Decrypt(pref.RecreationGovPassword)
+		if err != nil {
+			return fmt.Errorf("failed to decrypt stored password: %w", err)
+		}
+		details.RecreationGovUsername = pref.RecreationGovUsername
+		details.RecreationGovPassword = password
+		return nil
+	}
+
+	if pref.RecreationGovOAuthToken != "" {
+		token, err := w.crypto.Decrypt(pref.RecreationGovOAuthToken)
+		if err != nil {
+			return fmt.Errorf("failed to decrypt stored OAuth token: %w", err)
+		}
+		details.RecreationGovOAuthToken = token
+		return nil
+	}
+
+	return errNoRecreationGovCredentials
 }
 
 // handleNotifyOnly sends notifications about availability without booking

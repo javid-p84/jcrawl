@@ -10,6 +10,7 @@ import (
 
 	"database/sql"
 
+	"github.com/gorilla/mux"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/crypto"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/db"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/models"
@@ -245,6 +246,160 @@ func (h *Handler) GetPreferences(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(prefs)
+}
+
+// UpdatePreferenceRequest carries only the fields being changed; omitted
+// (nil) fields are left as-is. Recreation.gov credentials are managed
+// separately via the /recreation/credentials endpoints, not here.
+type UpdatePreferenceRequest struct {
+	GoogleLink     *string `json:"google_link"`
+	RestaurantName *string `json:"restaurant_name"`
+	DateRangeFrom  *string `json:"date_range_from"`
+	DateRangeTo    *string `json:"date_range_to"`
+	DayPreference  *[]int  `json:"day_preference"`
+	PartySize      *int    `json:"party_size"`
+	AutoBook       *bool   `json:"auto_book"`
+	NotifyOnly     *bool   `json:"notify_only"`
+	Active         *bool   `json:"active"`
+	GuestName      *string `json:"guest_name"`
+	GuestEmail     *string `json:"guest_email"`
+	GuestPhone     *string `json:"guest_phone"`
+	SpecialNotes   *string `json:"special_notes"`
+}
+
+// UpdatePreference applies a partial update to an existing preference.
+// Setting "active": false pauses monitoring; "active": true resumes it.
+func (h *Handler) UpdatePreference(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID := h.requireUserID(w, r)
+	if userID == "" {
+		return
+	}
+
+	prefID := mux.Vars(r)["id"]
+	if prefID == "" {
+		http.Error(w, "Preference ID required", http.StatusBadRequest)
+		return
+	}
+
+	existing, err := h.prefRepo.GetPreferenceByID(prefID, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Preference not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to load preference", http.StatusInternalServerError)
+		return
+	}
+
+	var req UpdatePreferenceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if req.GoogleLink != nil {
+		existing.GoogleLink = *req.GoogleLink
+	}
+	if req.RestaurantName != nil {
+		existing.RestaurantName = *req.RestaurantName
+	}
+	if req.DateRangeFrom != nil {
+		d, err := parseDate(*req.DateRangeFrom)
+		if err != nil {
+			http.Error(w, "date_range_from must be YYYY-MM-DD or RFC3339", http.StatusBadRequest)
+			return
+		}
+		existing.DateRangeFrom = d
+	}
+	if req.DateRangeTo != nil {
+		d, err := parseDate(*req.DateRangeTo)
+		if err != nil {
+			http.Error(w, "date_range_to must be YYYY-MM-DD or RFC3339", http.StatusBadRequest)
+			return
+		}
+		existing.DateRangeTo = d
+	}
+	if existing.DateRangeTo.Before(existing.DateRangeFrom) {
+		http.Error(w, "date_range_to must not be before date_range_from", http.StatusBadRequest)
+		return
+	}
+	if req.DayPreference != nil {
+		existing.DayPreference = *req.DayPreference
+	}
+	if req.PartySize != nil {
+		existing.PartySize = *req.PartySize
+	}
+	if req.AutoBook != nil {
+		existing.AutoBook = *req.AutoBook
+	}
+	if req.NotifyOnly != nil {
+		existing.NotifyOnly = *req.NotifyOnly
+	}
+	if req.Active != nil {
+		existing.Active = *req.Active
+	}
+	if req.GuestName != nil {
+		existing.GuestName = *req.GuestName
+	}
+	if req.GuestEmail != nil {
+		existing.GuestEmail = *req.GuestEmail
+	}
+	if req.GuestPhone != nil {
+		existing.GuestPhone = *req.GuestPhone
+	}
+	if req.SpecialNotes != nil {
+		existing.SpecialNotes = *req.SpecialNotes
+	}
+	if existing.NotifyOnly {
+		existing.AutoBook = false
+	}
+
+	if err := h.prefRepo.UpdatePreference(existing); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Preference not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to update preference", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(existing)
+}
+
+// DeletePreference permanently removes a preference and stops monitoring it.
+func (h *Handler) DeletePreference(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID := h.requireUserID(w, r)
+	if userID == "" {
+		return
+	}
+
+	prefID := mux.Vars(r)["id"]
+	if prefID == "" {
+		http.Error(w, "Preference ID required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.prefRepo.DeletePreference(prefID, userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Preference not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to delete preference", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetBookings retrieves all bookings for a user
