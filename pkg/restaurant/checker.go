@@ -61,6 +61,7 @@ func (c *Checker) CheckAvailability(ctx context.Context, pref *models.UserPrefer
 					PreferenceID: pref.ID,
 					Date:         currentDate,
 					Time:         slot,
+					Nights:       1,
 					PartySize:    pref.PartySize,
 					Booked:       false,
 				}
@@ -80,6 +81,11 @@ func (c *Checker) CheckAvailability(ctx context.Context, pref *models.UserPrefer
 
 // checkRecreationGovAvailability checks recreation.gov using their API
 func (c *Checker) checkRecreationGovAvailability(ctx context.Context, pref *models.UserPreference) ([]models.Availability, error) {
+	nights := pref.ConsecutiveDays
+	if nights < 1 {
+		nights = 1
+	}
+
 	recScraper := scraper.NewRecreationGovScraper()
 	availablesByDate, err := recScraper.CheckAvailability(ctx, pref)
 	if err != nil {
@@ -98,8 +104,9 @@ func (c *Checker) checkRecreationGovAvailability(ctx context.Context, pref *mode
 		for _, site := range sites {
 			avail := models.Availability{
 				PreferenceID: pref.ID,
-				Date:         date,
+				Date:         date, // Check-in date; first of Nights consecutive nights
 				Time:         site, // Site name as the "time"
+				Nights:       nights,
 				PartySize:    pref.PartySize,
 				Booked:       false,
 			}

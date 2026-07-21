@@ -303,6 +303,11 @@ function prefFormHTML(pref) {
         <label><input type="checkbox" class="f_day" value="${i}" ${days.includes(i) ? "checked" : ""}> ${d}</label>
       `).join("")}
     </div>
+    <label>Consecutive nights required</label>
+    <input type="number" id="f_consecutiveDays" min="1" value="${p.consecutive_days || 1}">
+    <div class="meta" style="margin-top:4px;">
+      E.g. checking Fri, Sat &amp; Sun with 3 nights looks for a 3-night stay starting Friday (campgrounds only).
+    </div>
     <div class="checkline">
       <input type="checkbox" id="f_notifyOnly" ${p.notify_only ? "checked" : ""}>
       <label for="f_notifyOnly">Notify me only — don't book automatically (no recreation.gov login needed)</label>
@@ -354,6 +359,7 @@ async function savePref(existing) {
     date_range_from: document.getElementById("f_from").value,
     date_range_to: document.getElementById("f_to").value,
     day_preference: Array.from(document.querySelectorAll(".f_day:checked")).map(el => parseInt(el.value, 10)),
+    consecutive_days: parseInt(document.getElementById("f_consecutiveDays").value, 10) || 1,
     party_size: parseInt(document.getElementById("f_party").value, 10) || 1,
     notify_only: notifyOnly,
     auto_book: notifyOnly ? false : document.getElementById("f_autoBook").checked,
@@ -430,11 +436,12 @@ function prefCardHTML(pref) {
   const days = (pref.day_preference || []).map(d => DAY_NAMES[d]).join(", ") || "Any day";
   const mode = pref.notify_only ? "Notify only" : (pref.auto_book ? "Auto-book" : "Manual");
   const isRecGov = (pref.google_link || "").includes("recreation.gov");
+  const nights = pref.consecutive_days > 1 ? ` · ${pref.consecutive_days} consecutive nights` : "";
   return `
     <div class="card" id="card-${pref.id}">
       <h3>${pref.restaurant_name || pref.google_link} ${pref.active ? "" : "<span class='status-tag'>Paused</span>"}</h3>
       <div class="meta">${pref.google_link}</div>
-      <div class="meta">${(pref.date_range_from||"").slice(0,10)} → ${(pref.date_range_to||"").slice(0,10)} · ${days} · Party of ${pref.party_size}</div>
+      <div class="meta">${(pref.date_range_from||"").slice(0,10)} → ${(pref.date_range_to||"").slice(0,10)} · ${days} · Party of ${pref.party_size}${nights}</div>
       <div class="meta">Mode: ${mode}</div>
       <div class="actions">
         <button data-act="edit">Edit</button>

@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	errNoCryptoConfigured        = errors.New("recreation.gov auto-book requires credentials but the server has no encryption manager configured")
+	errNoCryptoConfigured         = errors.New("recreation.gov auto-book requires credentials but the server has no encryption manager configured")
 	errNoRecreationGovCredentials = errors.New("recreation.gov auto-book is enabled but no username/password or OAuth token is configured for this preference; add credentials via /api/v1/recreation/credentials, or switch to notify_only")
 )
 
@@ -170,9 +170,14 @@ func (w *CheckWorker) handleAutoBooking(ctx context.Context, pref *models.UserPr
 	}
 
 	// Create booking details
+	nights := slot.Nights
+	if nights < 1 {
+		nights = 1
+	}
 	details := &models.BookingDetails{
 		Date:         slot.Date,
 		Time:         slot.Time,
+		Nights:       nights,
 		PartySize:    pref.PartySize,
 		GuestName:    pref.GuestName,
 		GuestEmail:   pref.GuestEmail,
@@ -232,7 +237,7 @@ func (w *CheckWorker) handleAutoBooking(ctx context.Context, pref *models.UserPr
 	// Notify the user about the outcome
 	if w.notifier != nil {
 		if result.Success {
-			if err := w.notifier.NotifyBookingSuccess(ctx, pref.UserID, pref.ID, booking.ID, pref.RestaurantName, slot.Date, slot.Time, result.ConfirmationID); err != nil {
+			if err := w.notifier.NotifyBookingSuccess(ctx, pref.UserID, pref.ID, booking.ID, pref.RestaurantName, slot.Date, nights, slot.Time, result.ConfirmationID); err != nil {
 				log.Printf("Error sending booking success notification: %v\n", err)
 			}
 		} else {
@@ -291,11 +296,14 @@ func (w *CheckWorker) populateRecreationGovCredentials(pref *models.UserPreferen
 func (w *CheckWorker) handleNotifyOnly(ctx context.Context, pref *models.UserPreference, availabilities []models.Availability) {
 	log.Printf("Notify-only mode: Found %d slots for %s\n", len(availabilities), pref.RestaurantName)
 
-	// Group availabilities by date
+	// Group availabilities by date (all entries for a given start date share
+	// the same Nights value, since they came from the same check)
 	availablesByDate := make(map[string][]string)
+	nightsByDate := make(map[string]int)
 	for _, avail := range availabilities {
 		dateStr := avail.Date.Format("2006-01-02")
 		availablesByDate[dateStr] = append(availablesByDate[dateStr], avail.Time)
+		nightsByDate[dateStr] = avail.Nights
 	}
 
 	if w.notifier == nil {
@@ -309,9 +317,8 @@ func (w *CheckWorker) handleNotifyOnly(ctx context.Context, pref *models.UserPre
 		if err != nil {
 			continue
 		}
-		if err := w.notifier.NotifyAvailabilityFound(ctx, pref.UserID, pref.ID, pref.RestaurantName, date, timeSlots); err != nil {
+		if err := w.notifier.NotifyAvailabilityFound(ctx, pref.UserID, pref.ID, pref.RestaurantName, date, nightsByDate[dateStr], timeSlots); err != nil {
 			log.Printf("Error sending availability notification for %s: %v\n", pref.ID, err)
 		}
 	}
 }
-

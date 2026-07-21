@@ -21,6 +21,7 @@ A preference describes what to watch for and how to react. Fields:
 - `google_link` — URL of the restaurant or facility to monitor
 - `date_range_from` / `date_range_to` — window to check within
 - `day_preference` — which days of the week count (e.g. Friday/Saturday only)
+- `consecutive_days` — how many nights in a row are needed, starting on the first day of a `day_preference` run (recreation.gov only; see below)
 - `party_size`
 - `guest_name` / `guest_email` / `guest_phone` / `special_notes` — used to fill the booking form
 - `auto_book` — book automatically when a match is found
@@ -32,6 +33,14 @@ A preference describes what to watch for and how to react. Fields:
 - `GET /api/v1/preferences` — list your preferences
 - `PATCH /api/v1/preferences/{id}` — partial update; also used to pause (`"active": false`) or resume (`"active": true`) a preference
 - `DELETE /api/v1/preferences/{id}` — remove
+
+### Consecutive-night stays (camping)
+
+`day_preference` identifies which day a stay may *start* on — for a run of consecutive preferred weekdays (e.g. Friday, Saturday, Sunday), only the first day of that run is used as a candidate check-in date. Saturday and Sunday are covered by the stay length rather than treated as separate starting points. `consecutive_days` (default 1) is how many nights in a row, starting on that day, must be available on the *same* campsite.
+
+Example: `day_preference: [5, 6, 0]` (Fri, Sat, Sun) with `consecutive_days: 3` looks only for 3-night blocks starting on a Friday — never a 3-night block starting Saturday or Sunday. This works for any run, including ones that wrap the week boundary (e.g. Saturday/Sunday), and for non-contiguous preferences (each preferred day is evaluated as its own independent start).
+
+This only affects recreation.gov checks; restaurant reservations are single time slots with no multi-night concept in jcrawl.
 
 ## Background Monitoring
 

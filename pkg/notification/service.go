@@ -29,8 +29,15 @@ func NewService(notifRepo *db.NotificationRepository) *Service {
 	}
 }
 
-// NotifyAvailabilityFound creates and sends notification when availability is discovered
-func (s *Service) NotifyAvailabilityFound(ctx context.Context, userID string, prefID string, restaurant string, date time.Time, timeSlots []string) error {
+// NotifyAvailabilityFound creates and sends notification when availability is
+// discovered. nights is the length of the stay starting at date (1 for a
+// single night/time slot, e.g. restaurants); when nights > 1 the message and
+// stored data note the check-out date too.
+func (s *Service) NotifyAvailabilityFound(ctx context.Context, userID string, prefID string, restaurant string, date time.Time, nights int, timeSlots []string) error {
+	if nights < 1 {
+		nights = 1
+	}
+
 	timeStr := ""
 	if len(timeSlots) > 0 {
 		if len(timeSlots) <= 3 {
@@ -40,16 +47,23 @@ func (s *Service) NotifyAvailabilityFound(ctx context.Context, userID string, pr
 		}
 	}
 
+	when := fmt.Sprintf("on %s", date.Format("Jan 2, 2006"))
+	if nights > 1 {
+		checkOut := date.AddDate(0, 0, nights)
+		when = fmt.Sprintf("for %d nights, %s → %s", nights, date.Format("Jan 2"), checkOut.Format("Jan 2, 2006"))
+	}
+
 	notif := &models.Notification{
 		UserID:       userID,
 		PreferenceID: prefID,
 		Type:         models.NotificationAvailabilityFound,
 		Title:        "✨ Availability Found!",
-		Message:      fmt.Sprintf("🎉 %s has availability on %s %s", restaurant, date.Format("Jan 2, 2006"), timeStr),
+		Message:      fmt.Sprintf("🎉 %s has availability %s %s", restaurant, when, timeStr),
 		Read:         false,
 		Data: map[string]interface{}{
 			"restaurant": restaurant,
 			"date":       date.Format("2006-01-02"),
+			"nights":     nights,
 			"times":      timeSlots,
 		},
 	}
@@ -62,19 +76,31 @@ func (s *Service) NotifyAvailabilityFound(ctx context.Context, userID string, pr
 	return nil
 }
 
-// NotifyBookingSuccess creates a notification when booking succeeds
-func (s *Service) NotifyBookingSuccess(ctx context.Context, userID string, prefID string, bookingID string, restaurant string, date time.Time, timeSlot string, confirmationID string) error {
+// NotifyBookingSuccess creates a notification when booking succeeds. nights
+// is the length of the stay starting at date (1 for a single night/slot).
+func (s *Service) NotifyBookingSuccess(ctx context.Context, userID string, prefID string, bookingID string, restaurant string, date time.Time, nights int, timeSlot string, confirmationID string) error {
+	if nights < 1 {
+		nights = 1
+	}
+
+	when := fmt.Sprintf("for %s at %s", date.Format("Jan 2, 2006"), timeSlot)
+	if nights > 1 {
+		checkOut := date.AddDate(0, 0, nights)
+		when = fmt.Sprintf("for %d nights, %s → %s (site: %s)", nights, date.Format("Jan 2"), checkOut.Format("Jan 2, 2006"), timeSlot)
+	}
+
 	notif := &models.Notification{
 		UserID:       userID,
 		PreferenceID: prefID,
 		BookingID:    bookingID,
 		Type:         models.NotificationBookingSuccess,
 		Title:        "🎊 Booking Confirmed!",
-		Message:      fmt.Sprintf("Your reservation at %s for %s at %s is confirmed. Confirmation: %s", restaurant, date.Format("Jan 2, 2006"), timeSlot, confirmationID),
+		Message:      fmt.Sprintf("Your reservation at %s %s is confirmed. Confirmation: %s", restaurant, when, confirmationID),
 		Read:         false,
 		Data: map[string]interface{}{
 			"restaurant":      restaurant,
 			"date":            date.Format("2006-01-02"),
+			"nights":          nights,
 			"time":            timeSlot,
 			"confirmation_id": confirmationID,
 		},
@@ -130,8 +156,8 @@ func (s *Service) NotifyCheckComplete(ctx context.Context, userID string, prefID
 		Message:      message,
 		Read:         false,
 		Data: map[string]interface{}{
-			"restaurant":   restaurant,
-			"slots_found":  slotsFound,
+			"restaurant":  restaurant,
+			"slots_found": slotsFound,
 		},
 	}
 

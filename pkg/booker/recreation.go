@@ -128,9 +128,9 @@ func (rb *RecreationGovBooker) ParseAvailableSites(facilityID string, availabili
 			}
 
 			site := AvailableSite{
-				SiteID:   siteID,
-				SiteName: siteName,
-				Date:     targetDate,
+				SiteID:    siteID,
+				SiteName:  siteName,
+				Date:      targetDate,
 				Available: true,
 			}
 			sites = append(sites, site)
@@ -204,15 +204,29 @@ func (rb *RecreationGovBooker) Book(ctx context.Context, url string, details *mo
 
 	var confirmationID string
 
-	err = chromedp.Run(bookCtx,
+	tasks := chromedp.Tasks{
 		chromedp.Navigate(url),
 		chromedp.WaitVisible("body", chromedp.ByQuery),
-		chromedp.Sleep(2*time.Second),
+		chromedp.Sleep(2 * time.Second),
 
-		// Find and click the availability button for the target date
+		// Find and click the availability button for the check-in date
 		chromedp.Click(fmt.Sprintf(`//button[contains(., '%s')]`, details.Date.Format("01/02")), chromedp.BySearch),
-		chromedp.Sleep(500*time.Millisecond),
+		chromedp.Sleep(500 * time.Millisecond),
+	}
 
+	// For multi-night stays, also select the check-out date. Recreation.gov's
+	// actual date-range picker markup is unverified here (same caveat as the
+	// rest of this best-effort flow); this attempts the same click pattern
+	// used for check-in against the checkout date.
+	if details.Nights > 1 {
+		checkOut := details.CheckOutDate()
+		tasks = append(tasks,
+			chromedp.Click(fmt.Sprintf(`//button[contains(., '%s')]`, checkOut.Format("01/02")), chromedp.BySearch),
+			chromedp.Sleep(500*time.Millisecond),
+		)
+	}
+
+	tasks = append(tasks,
 		// Continue reservation flow
 		chromedp.Click(`//button[contains(., 'Continue')]`, chromedp.BySearch),
 		chromedp.Sleep(500*time.Millisecond),
@@ -236,6 +250,8 @@ func (rb *RecreationGovBooker) Book(ctx context.Context, url string, details *mo
 		// Extract confirmation
 		chromedp.TextContent("div[class*='confirmation']", &confirmationID),
 	)
+
+	err = chromedp.Run(bookCtx, tasks)
 
 	// Never fabricate a confirmation: if the flow failed or no confirmation was
 	// captured, report failure so the user is not told a booking exists.

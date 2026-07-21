@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/models"
@@ -43,49 +44,127 @@ func (rs *RecreationGovScraper) ExtractFacilityID(url string) (string, error) {
 	return "", fmt.Errorf("could not extract facility ID from URL: %s", url)
 }
 
-// CheckAvailability checks recreation.gov for available campsites
+// SiteAvailability is one campsite's availability within a fetched month,
+// keyed by the recreation.gov site ID (not name, which is not guaranteed unique).
+type SiteAvailability struct {
+	SiteID         string
+	SiteName       string
+	AvailableDates map[string]bool // "2006-01-02" -> available
+}
+
+// CheckAvailability checks recreation.gov for campsites with a consecutive
+// run of nights matching the preference's day-of-week and length requirements.
+//
+// day_preference identifies which day a stay may *start* on: for a group of
+// consecutive preferred weekdays (e.g. Fri, Sat, Sun), only the first day of
+// that run (Friday) is used as a candidate check-in — Saturday and Sunday are
+// covered by the consecutive_days window rather than treated as separate
+// candidate start dates. ConsecutiveDays (default 1) is how many nights in a
+// row, starting on that day, must be available on the same site.
 func (rs *RecreationGovScraper) CheckAvailability(ctx context.Context, pref *models.UserPreference) (map[string][]string, error) {
 	facilityID, err := rs.ExtractFacilityID(pref.GoogleLink)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Printf("Checking recreation.gov availability for facility: %s\n", facilityID)
+	nights := pref.ConsecutiveDays
+	if nights < 1 {
+		nights = 1
+	}
+
+	log.Printf("Checking recreation.gov availability for facility: %s (%d night(s) per stay)\n", facilityID, nights)
+
+	monthCache := make(map[string]map[string]SiteAvailability)
+	getMonth := func(monthStart time.Time) (map[string]SiteAvailability, error) {
+		key := monthStart.Format("2006-01")
+		if cached, ok := monthCache[key]; ok {
+			return cached, nil
+		}
+		data, err := rs.fetchMonthAvailability(ctx, facilityID, monthStart)
+		if err != nil {
+			return nil, err
+		}
+		monthCache[key] = data
+		return data, nil
+	}
 
 	availablesByDate := make(map[string][]string)
 
-	// Check each date in the range
 	currentDate := pref.DateRangeFrom
-	for currentDate.Before(pref.DateRangeTo.AddDate(0, 0, 1)) {
-		// Check if date matches day preference
-		if matchesDayPreference(currentDate, pref.DayPreference) {
-			// Get availability for this month
-			monthStr := currentDate.Format("2006-01-02")
-			sites, err := rs.getAvailableSites(ctx, facilityID, monthStr)
+	for !currentDate.After(pref.DateRangeTo) {
+		if isStartOfPreferredRun(currentDate, pref.DayPreference) {
+			sites, err := rs.sitesAvailableFor(currentDate, nights, getMonth)
 			if err != nil {
-				log.Printf("Error checking availability for %s: %v\n", monthStr, err)
-				currentDate = currentDate.AddDate(0, 0, 1)
-				continue
-			}
-
-			if len(sites) > 0 {
-				siteNames := make([]string, 0, len(sites))
-				for _, site := range sites {
-					siteNames = append(siteNames, site)
-				}
-				availablesByDate[monthStr] = siteNames
+				log.Printf("Error checking availability starting %s: %v\n", currentDate.Format("2006-01-02"), err)
+			} else if len(sites) > 0 {
+				availablesByDate[currentDate.Format("2006-01-02")] = sites
 			}
 		}
-
 		currentDate = currentDate.AddDate(0, 0, 1)
 	}
 
 	return availablesByDate, nil
 }
 
-// getAvailableSites fetches available sites for a specific month
-func (rs *RecreationGovScraper) getAvailableSites(ctx context.Context, facilityID string, dateStr string) ([]string, error) {
-	url := fmt.Sprintf("https://www.recreation.gov/api/camps/availability/campgrounds/%s/month?start_date=%sT00:00:00.000Z", facilityID, dateStr)
+// sitesAvailableFor merges whichever months the [start, start+nights) window
+// touches and returns the names of sites available for every night in it.
+func (rs *RecreationGovScraper) sitesAvailableFor(start time.Time, nights int, getMonth func(time.Time) (map[string]SiteAvailability, error)) ([]string, error) {
+	merged := make(map[string]SiteAvailability)
+	seenMonths := make(map[string]bool)
+
+	for i := 0; i < nights; i++ {
+		d := start.AddDate(0, 0, i)
+		monthKey := d.Format("2006-01")
+		if seenMonths[monthKey] {
+			continue
+		}
+		seenMonths[monthKey] = true
+
+		monthStart := time.Date(d.Year(), d.Month(), 1, 0, 0, 0, 0, d.Location())
+		monthData, err := getMonth(monthStart)
+		if err != nil {
+			return nil, err
+		}
+		for id, sa := range monthData {
+			existing, ok := merged[id]
+			if !ok {
+				existing = SiteAvailability{SiteID: sa.SiteID, SiteName: sa.SiteName, AvailableDates: make(map[string]bool)}
+			}
+			for date := range sa.AvailableDates {
+				existing.AvailableDates[date] = true
+			}
+			merged[id] = existing
+		}
+	}
+
+	return findConsecutiveAvailability(merged, start, nights), nil
+}
+
+// findConsecutiveAvailability returns the names of sites available for every
+// one of the `nights` consecutive dates starting at `start`. Pure function,
+// independent of the network call, so it's directly testable.
+func findConsecutiveAvailability(sites map[string]SiteAvailability, start time.Time, nights int) []string {
+	var matched []string
+	for _, sa := range sites {
+		allAvailable := true
+		for i := 0; i < nights; i++ {
+			dateStr := start.AddDate(0, 0, i).Format("2006-01-02")
+			if !sa.AvailableDates[dateStr] {
+				allAvailable = false
+				break
+			}
+		}
+		if allAvailable {
+			matched = append(matched, sa.SiteName)
+		}
+	}
+	return matched
+}
+
+// fetchMonthAvailability fetches and parses one month of per-site availability.
+// monthStart must be the first day of the month recreation.gov's API expects.
+func (rs *RecreationGovScraper) fetchMonthAvailability(ctx context.Context, facilityID string, monthStart time.Time) (map[string]SiteAvailability, error) {
+	url := fmt.Sprintf("https://www.recreation.gov/api/camps/availability/campgrounds/%s/month?start_date=%sT00:00:00.000Z", facilityID, monthStart.Format("2006-01-02"))
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -110,50 +189,50 @@ func (rs *RecreationGovScraper) getAvailableSites(ctx context.Context, facilityI
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	// Parse available sites from the response
-	sites := rs.parseAvailableSites(data, dateStr)
-	return sites, nil
+	return parseMonthAvailability(data), nil
 }
 
-// parseAvailableSites extracts available campsite names from API response
-func (rs *RecreationGovScraper) parseAvailableSites(data map[string]interface{}, targetDate string) []string {
-	var sites []string
+// parseMonthAvailability extracts per-site, per-date availability from a
+// decoded recreation.gov month-availability API response. Pure function,
+// independent of the network call, so it's directly testable with a fixture.
+func parseMonthAvailability(data map[string]interface{}) map[string]SiteAvailability {
+	result := make(map[string]SiteAvailability)
 
 	campsites, ok := data["campsites"].(map[string]interface{})
 	if !ok {
-		return sites
+		return result
 	}
 
-	dateKey := fmt.Sprintf("%sT00:00:00.000Z", targetDate)
-
-	for _, campData := range campsites {
+	for siteID, campData := range campsites {
 		campMap, ok := campData.(map[string]interface{})
 		if !ok {
 			continue
 		}
 
-		// Check availability for target date
+		siteName := "Unknown Site"
+		if name, ok := campMap["site"].(string); ok {
+			siteName = name
+		}
+
 		availabilities, ok := campMap["availabilities"].(map[string]interface{})
 		if !ok {
 			continue
 		}
 
-		availability, ok := availabilities[dateKey]
-		if !ok {
-			continue
+		dates := make(map[string]bool)
+		for dateKey, val := range availabilities {
+			status, ok := val.(float64)
+			if !ok || status != 1 {
+				continue
+			}
+			// dateKey looks like "2024-07-05T00:00:00Z"
+			dates[strings.SplitN(dateKey, "T", 2)[0]] = true
 		}
 
-		// Check if available (1 = available)
-		availStatus, ok := availability.(float64)
-		if ok && availStatus == 1 {
-			// Get site name
-			if siteName, ok := campMap["site"].(string); ok {
-				sites = append(sites, siteName)
-			}
-		}
+		result[siteID] = SiteAvailability{SiteID: siteID, SiteName: siteName, AvailableDates: dates}
 	}
 
-	return sites
+	return result
 }
 
 // matchesDayPreference checks if a date matches the user's day preferences
@@ -169,4 +248,19 @@ func matchesDayPreference(date time.Time, dayPreference []int) bool {
 		}
 	}
 	return false
+}
+
+// isStartOfPreferredRun reports whether date is the first day of a run of
+// consecutive preferred weekdays — e.g. for day_preference [Fri, Sat, Sun],
+// only Friday dates return true; Saturday and Sunday don't, because they're
+// continuations of the same run rather than separate candidate check-in days.
+// If day_preference is empty (any day allowed), every date qualifies.
+func isStartOfPreferredRun(date time.Time, dayPreference []int) bool {
+	if len(dayPreference) == 0 {
+		return true
+	}
+	if !matchesDayPreference(date, dayPreference) {
+		return false
+	}
+	return !matchesDayPreference(date.AddDate(0, 0, -1), dayPreference)
 }

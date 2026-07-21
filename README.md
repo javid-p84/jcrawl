@@ -191,7 +191,7 @@ curl -X POST http://localhost:8080/api/v1/preferences \
 
 **Recreation.gov example**, with a choice of three modes:
 
-**Mode A — Notify only.** No recreation.gov account needed at all; jcrawl just tells you when a spot opens and you book it yourself.
+**Mode A — Notify only.** No recreation.gov account needed at all; jcrawl just tells you when a spot opens and you book it yourself. This example asks for a 3-night stay: with `day_preference` set to Fri/Sat/Sun, jcrawl looks specifically for a 3-night block *starting on Friday* (Saturday and Sunday are treated as the rest of that same stay, not separate candidate check-in days).
 ```bash
 curl -X POST http://localhost:8080/api/v1/preferences \
   -H "Content-Type: application/json" \
@@ -201,11 +201,14 @@ curl -X POST http://localhost:8080/api/v1/preferences \
     "restaurant_name": "Yosemite Valley Campground",
     "date_range_from": "2024-07-01",
     "date_range_to": "2024-07-31",
-    "day_preference": [5, 6],
+    "day_preference": [5, 6, 0],
+    "consecutive_days": 3,
     "party_size": 4,
     "notify_only": true
   }'
 ```
+
+`consecutive_days` defaults to 1 (check each preferred day independently, same as before this field existed) and currently only affects recreation.gov checks — restaurant reservations don't have a multi-night concept in jcrawl.
 
 **Mode B — Auto-book with your recreation.gov password.** Set `auto_book: true` and `guest_name`/`guest_email`/`guest_phone` on the preference (as in the restaurant example), then attach credentials. This is the only mode that can currently complete a real booking — jcrawl logs into recreation.gov with these credentials in the same browser session it uses to reserve the site.
 ```bash

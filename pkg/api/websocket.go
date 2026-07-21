@@ -42,7 +42,7 @@ type Client struct {
 
 // NotificationMessage is sent over WebSocket
 type NotificationMessage struct {
-	Type      string      `json:"type"`      // "notification", "status", etc
+	Type      string      `json:"type"` // "notification", "status", etc
 	UserID    string      `json:"user_id"`
 	Data      interface{} `json:"data"`
 	Timestamp int64       `json:"timestamp"`

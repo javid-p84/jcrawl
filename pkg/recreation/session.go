@@ -14,13 +14,13 @@ import (
 )
 
 type SessionManager struct {
-	client      *http.Client
-	username    string
-	password    string
-	oauthToken  string
-	oauthMgr    *OAuthManager
-	authMethod  AuthMethod
-	isLoggedIn  bool
+	client     *http.Client
+	username   string
+	password   string
+	oauthToken string
+	oauthMgr   *OAuthManager
+	authMethod AuthMethod
+	isLoggedIn bool
 }
 
 type AuthMethod string

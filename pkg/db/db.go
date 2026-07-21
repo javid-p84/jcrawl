@@ -44,6 +44,7 @@ func InitializeSchema(db *sql.DB) error {
 		date_range_from DATE NOT NULL,
 		date_range_to DATE NOT NULL,
 		day_preference INTEGER[] DEFAULT ARRAY[]::INTEGER[],
+		consecutive_days INTEGER NOT NULL DEFAULT 1,
 		party_size INTEGER NOT NULL,
 		auto_book BOOLEAN DEFAULT true,
 		notify_only BOOLEAN DEFAULT false,
@@ -63,6 +64,10 @@ func InitializeSchema(db *sql.DB) error {
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
+
+	-- CREATE TABLE IF NOT EXISTS above only applies to a fresh database; existing
+	-- deployments need columns added explicitly when the schema grows.
+	ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS consecutive_days INTEGER NOT NULL DEFAULT 1;
 
 	CREATE TABLE IF NOT EXISTS booking_history (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

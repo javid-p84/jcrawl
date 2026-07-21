@@ -144,13 +144,19 @@ type CreatePreferenceRequest struct {
 	DateRangeFrom  string `json:"date_range_from"`
 	DateRangeTo    string `json:"date_range_to"`
 	DayPreference  []int  `json:"day_preference"`
-	PartySize      int    `json:"party_size"`
-	AutoBook       *bool  `json:"auto_book"`
-	NotifyOnly     bool   `json:"notify_only"`
-	GuestName      string `json:"guest_name"`
-	GuestEmail     string `json:"guest_email"`
-	GuestPhone     string `json:"guest_phone"`
-	SpecialNotes   string `json:"special_notes"`
+	// ConsecutiveDays is how many nights in a row, starting on the first day of
+	// a day_preference run, must be available together (e.g. day_preference
+	// [Fri,Sat,Sun] + consecutive_days 3 = a 3-night stay starting Friday).
+	// Defaults to 1 (no change from checking each preferred day independently).
+	// Currently only affects recreation.gov checks.
+	ConsecutiveDays int    `json:"consecutive_days"`
+	PartySize       int    `json:"party_size"`
+	AutoBook        *bool  `json:"auto_book"`
+	NotifyOnly      bool   `json:"notify_only"`
+	GuestName       string `json:"guest_name"`
+	GuestEmail      string `json:"guest_email"`
+	GuestPhone      string `json:"guest_phone"`
+	SpecialNotes    string `json:"special_notes"`
 }
 
 // CreatePreference creates a new monitoring preference
@@ -199,21 +205,27 @@ func (h *Handler) CreatePreference(w http.ResponseWriter, r *http.Request) {
 		autoBook = false
 	}
 
+	consecutiveDays := req.ConsecutiveDays
+	if consecutiveDays < 1 {
+		consecutiveDays = 1
+	}
+
 	pref := models.UserPreference{
-		UserID:         userID,
-		GoogleLink:     req.GoogleLink,
-		RestaurantName: req.RestaurantName,
-		DateRangeFrom:  dateFrom,
-		DateRangeTo:    dateTo,
-		DayPreference:  req.DayPreference,
-		PartySize:      req.PartySize,
-		AutoBook:       autoBook,
-		NotifyOnly:     req.NotifyOnly,
-		Active:         true,
-		GuestName:      req.GuestName,
-		GuestEmail:     req.GuestEmail,
-		GuestPhone:     req.GuestPhone,
-		SpecialNotes:   req.SpecialNotes,
+		UserID:          userID,
+		GoogleLink:      req.GoogleLink,
+		RestaurantName:  req.RestaurantName,
+		DateRangeFrom:   dateFrom,
+		DateRangeTo:     dateTo,
+		DayPreference:   req.DayPreference,
+		ConsecutiveDays: consecutiveDays,
+		PartySize:       req.PartySize,
+		AutoBook:        autoBook,
+		NotifyOnly:      req.NotifyOnly,
+		Active:          true,
+		GuestName:       req.GuestName,
+		GuestEmail:      req.GuestEmail,
+		GuestPhone:      req.GuestPhone,
+		SpecialNotes:    req.SpecialNotes,
 	}
 
 	if err := h.prefRepo.CreatePreference(&pref); err != nil {
@@ -252,19 +264,20 @@ func (h *Handler) GetPreferences(w http.ResponseWriter, r *http.Request) {
 // (nil) fields are left as-is. Recreation.gov credentials are managed
 // separately via the /recreation/credentials endpoints, not here.
 type UpdatePreferenceRequest struct {
-	GoogleLink     *string `json:"google_link"`
-	RestaurantName *string `json:"restaurant_name"`
-	DateRangeFrom  *string `json:"date_range_from"`
-	DateRangeTo    *string `json:"date_range_to"`
-	DayPreference  *[]int  `json:"day_preference"`
-	PartySize      *int    `json:"party_size"`
-	AutoBook       *bool   `json:"auto_book"`
-	NotifyOnly     *bool   `json:"notify_only"`
-	Active         *bool   `json:"active"`
-	GuestName      *string `json:"guest_name"`
-	GuestEmail     *string `json:"guest_email"`
-	GuestPhone     *string `json:"guest_phone"`
-	SpecialNotes   *string `json:"special_notes"`
+	GoogleLink      *string `json:"google_link"`
+	RestaurantName  *string `json:"restaurant_name"`
+	DateRangeFrom   *string `json:"date_range_from"`
+	DateRangeTo     *string `json:"date_range_to"`
+	DayPreference   *[]int  `json:"day_preference"`
+	ConsecutiveDays *int    `json:"consecutive_days"`
+	PartySize       *int    `json:"party_size"`
+	AutoBook        *bool   `json:"auto_book"`
+	NotifyOnly      *bool   `json:"notify_only"`
+	Active          *bool   `json:"active"`
+	GuestName       *string `json:"guest_name"`
+	GuestEmail      *string `json:"guest_email"`
+	GuestPhone      *string `json:"guest_phone"`
+	SpecialNotes    *string `json:"special_notes"`
 }
 
 // UpdatePreference applies a partial update to an existing preference.
@@ -330,6 +343,13 @@ func (h *Handler) UpdatePreference(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.DayPreference != nil {
 		existing.DayPreference = *req.DayPreference
+	}
+	if req.ConsecutiveDays != nil {
+		if *req.ConsecutiveDays < 1 {
+			http.Error(w, "consecutive_days must be at least 1", http.StatusBadRequest)
+			return
+		}
+		existing.ConsecutiveDays = *req.ConsecutiveDays
 	}
 	if req.PartySize != nil {
 		existing.PartySize = *req.PartySize
