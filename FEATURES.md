@@ -107,6 +107,16 @@ Each channel is optional and auto-registers only if its environment variables ar
 - JWT-based authentication on every user-scoped endpoint, with per-request ownership checks at the database layer (not just the API layer)
 - No credential or token value is ever included in an API response or a log line
 
+## Web UI
+
+A single-page UI is served directly by the app at `/` — no separate build step or frontend server, and no extra deployment step since it's embedded in the compiled Go binary.
+
+- Register / log in (JWT stored in the browser, sent as `Authorization: Bearer`)
+- Create, edit, pause/resume, and delete preferences, including the day-of-week picker and notify-only vs. auto-book toggle
+- A one-click form on each recreation.gov preference to store the account password used for auto-booking
+- Notifications list with unread badge, mark-as-read / mark-all-as-read, and instant toast popups pushed live over the WebSocket connection
+- Booking history with status and confirmation ID
+
 ## Deployment
 
 - Single `Dockerfile` (multi-stage build, includes headless Chrome) and `docker-compose.yml` (app + PostgreSQL) — `docker-compose up` is the entire setup
@@ -118,7 +128,6 @@ Each channel is optional and auto-registers only if its environment variables ar
 
 Tracked here so it's clear what's aspirational vs. real:
 
-- Web dashboard (everything today is API/`curl`-only)
 - Actual Twilio API call in the SMS channel (currently logs what it would send)
 - OAuth-token-based auto-booking for recreation.gov
 - Booking cancellation / cancellation monitoring

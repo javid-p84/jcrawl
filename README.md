@@ -142,6 +142,8 @@ Server starts on `http://localhost:8080`
 
 ## How to Use
 
+Once the server is running, open **http://localhost:8080** for a simple web UI — register, log in, and manage preferences/notifications/bookings without touching the API directly. Everything below is the equivalent `curl` walkthrough, useful for scripting or automation.
+
 ### 1. Register & Login
 
 ```bash

@@ -19,6 +19,7 @@ import (
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/notification"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/restaurant"
 	"github.com/jaavvviiiiddddd/jcrawl/pkg/worker"
+	"github.com/jaavvviiiiddddd/jcrawl/web"
 )
 
 func main() {
@@ -122,6 +123,10 @@ func main() {
 
 	// WebSocket endpoint for real-time notifications (authenticates via ?token=<jwt>)
 	router.HandleFunc("/ws/notifications", wsHub.HandleWebSocket)
+
+	// Static single-page UI, embedded in the binary. Registered last so it
+	// doesn't shadow the API/health/websocket routes above.
+	router.PathPrefix("/").Handler(http.FileServer(http.FS(web.Files)))
 
 	// Setup HTTP server
 	server := &http.Server{

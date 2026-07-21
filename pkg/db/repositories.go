@@ -94,9 +94,10 @@ func (r *PreferenceRepository) GetPreferencesByUserID(userID string) ([]models.U
 	var prefs []models.UserPreference
 	for rows.Next() {
 		var pref models.UserPreference
+		var days pq.Int64Array
 		err := rows.Scan(
 			&pref.ID, &pref.UserID, &pref.GoogleLink, &pref.RestaurantName,
-			&pref.DateRangeFrom, &pref.DateRangeTo, pq.Array(&pref.DayPreference),
+			&pref.DateRangeFrom, &pref.DateRangeTo, &days,
 			&pref.PartySize, &pref.AutoBook, &pref.NotifyOnly, &pref.Active, &pref.GuestName, &pref.GuestEmail,
 			&pref.GuestPhone, &pref.SpecialNotes, &pref.RecreationGovUsername, &pref.RecreationGovPassword,
 			&pref.RecreationGovOAuthToken, &pref.RecreationGovOAuthProvider, &pref.RecreationGovOAuthRefresh,
@@ -105,6 +106,7 @@ func (r *PreferenceRepository) GetPreferencesByUserID(userID string) ([]models.U
 		if err != nil {
 			return nil, err
 		}
+		pref.DayPreference = int64sToInts(days)
 		// Don't return sensitive data in API responses
 		pref.RecreationGovPassword = ""
 		pref.RecreationGovOAuthToken = ""
@@ -131,9 +133,10 @@ func (r *PreferenceRepository) GetActivePreferences() ([]models.UserPreference, 
 	var prefs []models.UserPreference
 	for rows.Next() {
 		var pref models.UserPreference
+		var days pq.Int64Array
 		err := rows.Scan(
 			&pref.ID, &pref.UserID, &pref.GoogleLink, &pref.RestaurantName,
-			&pref.DateRangeFrom, &pref.DateRangeTo, pq.Array(&pref.DayPreference),
+			&pref.DateRangeFrom, &pref.DateRangeTo, &days,
 			&pref.PartySize, &pref.AutoBook, &pref.NotifyOnly, &pref.Active, &pref.GuestName, &pref.GuestEmail,
 			&pref.GuestPhone, &pref.SpecialNotes, &pref.RecreationGovUsername, &pref.RecreationGovPassword,
 			&pref.RecreationGovOAuthToken, &pref.RecreationGovOAuthProvider, &pref.RecreationGovOAuthRefresh,
@@ -142,6 +145,7 @@ func (r *PreferenceRepository) GetActivePreferences() ([]models.UserPreference, 
 		if err != nil {
 			return nil, err
 		}
+		pref.DayPreference = int64sToInts(days)
 		prefs = append(prefs, pref)
 	}
 	return prefs, rows.Err()
@@ -151,6 +155,7 @@ func (r *PreferenceRepository) GetActivePreferences() ([]models.UserPreference, 
 // sql.ErrNoRows if it doesn't exist or belongs to a different user.
 func (r *PreferenceRepository) GetPreferenceByID(id, userID string) (*models.UserPreference, error) {
 	var pref models.UserPreference
+	var days pq.Int64Array
 	err := r.db.QueryRow(
 		`SELECT id, user_id, google_link, restaurant_name, date_range_from, date_range_to,
 		 day_preference, party_size, auto_book, notify_only, active, guest_name, guest_email, guest_phone,
@@ -161,7 +166,7 @@ func (r *PreferenceRepository) GetPreferenceByID(id, userID string) (*models.Use
 		id, userID,
 	).Scan(
 		&pref.ID, &pref.UserID, &pref.GoogleLink, &pref.RestaurantName,
-		&pref.DateRangeFrom, &pref.DateRangeTo, pq.Array(&pref.DayPreference),
+		&pref.DateRangeFrom, &pref.DateRangeTo, &days,
 		&pref.PartySize, &pref.AutoBook, &pref.NotifyOnly, &pref.Active, &pref.GuestName, &pref.GuestEmail,
 		&pref.GuestPhone, &pref.SpecialNotes, &pref.RecreationGovUsername, &pref.RecreationGovPassword,
 		&pref.RecreationGovOAuthToken, &pref.RecreationGovOAuthProvider, &pref.RecreationGovOAuthRefresh,
@@ -170,11 +175,26 @@ func (r *PreferenceRepository) GetPreferenceByID(id, userID string) (*models.Use
 	if err != nil {
 		return nil, err
 	}
+	pref.DayPreference = int64sToInts(days)
 	// Don't return sensitive data to callers building an API response
 	pref.RecreationGovPassword = ""
 	pref.RecreationGovOAuthToken = ""
 	pref.RecreationGovOAuthRefresh = ""
 	return &pref, nil
+}
+
+// int64sToInts converts a pq.Int64Array scan result to []int. lib/pq's
+// generic array Scan only supports []int64 (not []int), so day_preference
+// must be scanned into an int64 slice and converted after the fact.
+func int64sToInts(a pq.Int64Array) []int {
+	if a == nil {
+		return nil
+	}
+	out := make([]int, len(a))
+	for i, v := range a {
+		out[i] = int(v)
+	}
+	return out
 }
 
 // UpdatePreference updates the user-editable fields of a preference, scoped

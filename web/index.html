@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jcrawl</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --text: #1a1a1a;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --accent: #2563eb;
+    --accent-text: #ffffff;
+    --danger: #dc2626;
+    --success: #16a34a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d;
+      --panel: #1f2229;
+      --text: #e9e9ee;
+      --muted: #9aa0aa;
+      --border: #30333c;
+      --accent: #3b82f6;
+      --accent-text: #ffffff;
+      --danger: #f87171;
+      --success: #4ade80;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  header .status { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.connected { background: var(--success); }
+  main { max-width: 720px; margin: 0 auto; padding: 20px; }
+  .hidden { display: none !important; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .card h3 { margin: 0 0 4px; font-size: 15px; }
+  .card .meta { font-size: 13px; color: var(--muted); margin: 2px 0; }
+  .card .actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  input[type=text], input[type=email], input[type=password], input[type=number], input[type=date], textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+  }
+  textarea { resize: vertical; min-height: 50px; }
+  .days { display: flex; gap: 8px; flex-wrap: wrap; }
+  .days label { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text); margin: 0; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 140px; }
+  .checkline { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; }
+  .checkline label { margin: 0; color: var(--text); font-size: 13px; }
+
+  button {
+    font-size: 13px;
+    padding: 7px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+  button:disabled { opacity: .5; cursor: default; }
+
+  nav { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+  nav button { border: none; background: none; padding: 10px 14px; border-bottom: 2px solid transparent; border-radius: 0; }
+  nav button.active { border-bottom-color: var(--accent); color: var(--accent); font-weight: 600; }
+  nav .badge { background: var(--danger); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 6px; margin-left: 4px; }
+
+  .empty { color: var(--muted); font-size: 14px; padding: 24px 0; text-align: center; }
+  .error { color: var(--danger); font-size: 13px; margin-top: 8px; }
+  .unread { border-left: 3px solid var(--accent); }
+  .toast {
+    position: fixed; bottom: 20px; right: 20px; max-width: 320px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; box-shadow: 0 4px 16px rgba(0,0,0,.15);
+  }
+  .toast h4 { margin: 0 0 4px; font-size: 14px; }
+  .toast p { margin: 0; font-size: 13px; color: var(--muted); }
+
+  .auth-box { max-width: 360px; margin: 60px auto; }
+  .switch { text-align: center; margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .switch a { color: var(--accent); cursor: pointer; }
+  .status-tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); }
+  .status-tag.booked { color: var(--success); border-color: var(--success); }
+  .status-tag.failed { color: var(--danger); border-color: var(--danger); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>jcrawl</h1>
+  <div id="headerRight"></div>
+</header>
+
+<main>
+
+  <!-- Auth view -->
+  <section id="authView" class="hidden">
+    <div class="card auth-box">
+      <h3 id="authTitle">Log in</h3>
+      <div id="authError" class="error hidden"></div>
+      <label>Email</label>
+      <input type="email" id="authEmail" placeholder="you@example.com">
+      <label>Password</label>
+      <input type="password" id="authPassword" placeholder="••••••••">
+      <div class="actions" style="margin-top:16px;">
+        <button class="primary" id="authSubmit" style="width:100%">Log in</button>
+      </div>
+      <div class="switch">
+        <span id="authSwitchText">No account? <a id="authSwitchLink">Register</a></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- App view -->
+  <section id="appView" class="hidden">
+    <nav>
+      <button data-tab="preferences" class="active">Preferences</button>
+      <button data-tab="notifications">Notifications<span id="unreadBadge" class="badge hidden"></span></button>
+      <button data-tab="bookings">Bookings</button>
+    </nav>
+
+    <div id="tab-preferences">
+      <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+        <button class="primary" id="newPrefBtn">+ New preference</button>
+      </div>
+      <div id="prefForm" class="card hidden"></div>
+      <div id="prefList"></div>
+    </div>
+
+    <div id="tab-notifications" class="hidden">
+      <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+        <button id="markAllReadBtn">Mark all as read</button>
+      </div>
+      <div id="notifList"></div>
+    </div>
+
+    <div id="tab-bookings" class="hidden">
+      <div id="bookingList"></div>
+    </div>
+  </section>
+
+</main>
+
+<div id="toastHost"></div>
+
+<script>
+const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+let token = localStorage.getItem("jcrawl_token") || "";
+let ws = null;
+let editingPrefId = null;
+
+// ---------- API helper ----------
+async function api(path, opts = {}) {
+  const headers = Object.assign({"Content-Type": "application/json"}, opts.headers || {});
+  if (token) headers["Authorization"] = "Bearer " + token;
+  const res = await fetch(path, Object.assign({}, opts, {headers}));
+  if (res.status === 401) {
+    logout();
+    throw new Error("Session expired, please log in again");
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || ("Request failed: " + res.status));
+  }
+  if (res.status === 204) return null;
+  const contentType = res.headers.get("content-type") || "";
+  return contentType.includes("application/json") ? res.json() : null;
+}
+
+// ---------- Auth ----------
+let authMode = "login"; // or "register"
+
+function wireAuthSwitch() {
+  document.getElementById("authSwitchLink").onclick = () => {
+    authMode = authMode === "login" ? "register" : "login";
+    document.getElementById("authTitle").textContent = authMode === "login" ? "Log in" : "Register";
+    document.getElementById("authSubmit").textContent = authMode === "login" ? "Log in" : "Register";
+    document.getElementById("authSwitchText").innerHTML = authMode === "login"
+      ? 'No account? <a id="authSwitchLink">Register</a>'
+      : 'Have an account? <a id="authSwitchLink">Log in</a>';
+    wireAuthSwitch();
+  };
+}
+wireAuthSwitch();
+
+document.getElementById("authSubmit").onclick = async () => {
+  const email = document.getElementById("authEmail").value.trim();
+  const password = document.getElementById("authPassword").value;
+  const errEl = document.getElementById("authError");
+  errEl.classList.add("hidden");
+  if (!email || !password) {
+    errEl.textContent = "Email and password are required";
+    errEl.classList.remove("hidden");
+    return;
+  }
+  try {
+    if (authMode === "register") {
+      await api("/api/v1/auth/register", {method: "POST", body: JSON.stringify({email, password})});
+    }
+    const loginRes = await api("/api/v1/auth/login", {method: "POST", body: JSON.stringify({email, password})});
+    token = loginRes.token;
+    localStorage.setItem("jcrawl_token", token);
+    await enterApp();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove("hidden");
+  }
+};
+
+function logout() {
+  token = "";
+  localStorage.removeItem("jcrawl_token");
+  if (ws) { ws.close(); ws = null; }
+  document.getElementById("appView").classList.add("hidden");
+  document.getElementById("authView").classList.remove("hidden");
+  document.getElementById("headerRight").innerHTML = "";
+}
+
+// ---------- Header ----------
+function renderHeader(connected) {
+  document.getElementById("headerRight").innerHTML = `
+    <div class="status">
+      <span class="dot ${connected ? "connected" : ""}"></span>
+      <span>${connected ? "Live" : "Offline"}</span>
+      <button id="logoutBtn" style="margin-left:12px;">Log out</button>
+    </div>`;
+  document.getElementById("logoutBtn").onclick = logout;
+}
+
+// ---------- Tabs ----------
+document.querySelectorAll("nav button[data-tab]").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll("nav button[data-tab]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    ["preferences", "notifications", "bookings"].forEach(t => {
+      document.getElementById("tab-" + t).classList.toggle("hidden", t !== btn.dataset.tab);
+    });
+    if (btn.dataset.tab === "notifications") loadNotifications();
+    if (btn.dataset.tab === "bookings") loadBookings();
+  };
+});
+
+// ---------- Preferences ----------
+function prefFormHTML(pref) {
+  const p = pref || {};
+  const days = p.day_preference || [];
+  return `
+    <label>Booking page URL</label>
+    <input type="text" id="f_link" value="${p.google_link || ""}" placeholder="https://...">
+    <label>Name (restaurant / campground)</label>
+    <input type="text" id="f_name" value="${p.restaurant_name || ""}" placeholder="Yosemite Valley Campground">
+    <div class="row">
+      <div>
+        <label>From date</label>
+        <input type="date" id="f_from" value="${(p.date_range_from || "").slice(0,10)}">
+      </div>
+      <div>
+        <label>To date</label>
+        <input type="date" id="f_to" value="${(p.date_range_to || "").slice(0,10)}">
+      </div>
+      <div>
+        <label>Party size</label>
+        <input type="number" id="f_party" min="1" value="${p.party_size || 2}">
+      </div>
+    </div>
+    <label>Preferred days</label>
+    <div class="days">
+      ${DAY_NAMES.map((d, i) => `
+        <label><input type="checkbox" class="f_day" value="${i}" ${days.includes(i) ? "checked" : ""}> ${d}</label>
+      `).join("")}
+    </div>
+    <div class="checkline">
+      <input type="checkbox" id="f_notifyOnly" ${p.notify_only ? "checked" : ""}>
+      <label for="f_notifyOnly">Notify me only — don't book automatically (no recreation.gov login needed)</label>
+    </div>
+    <div class="checkline">
+      <input type="checkbox" id="f_autoBook" ${p.auto_book !== false ? "checked" : ""}>
+      <label for="f_autoBook">Book automatically when available</label>
+    </div>
+    <label>Guest name</label>
+    <input type="text" id="f_guestName" value="${p.guest_name || ""}">
+    <div class="row">
+      <div>
+        <label>Guest email</label>
+        <input type="email" id="f_guestEmail" value="${p.guest_email || ""}">
+      </div>
+      <div>
+        <label>Guest phone</label>
+        <input type="text" id="f_guestPhone" value="${p.guest_phone || ""}">
+      </div>
+    </div>
+    <label>Special notes</label>
+    <textarea id="f_notes">${p.special_notes || ""}</textarea>
+    <div id="prefFormError" class="error hidden"></div>
+    <div class="actions">
+      <button class="primary" id="prefFormSave">${pref ? "Save changes" : "Create preference"}</button>
+      <button id="prefFormCancel">Cancel</button>
+    </div>`;
+}
+
+function openPrefForm(pref) {
+  editingPrefId = pref ? pref.id : null;
+  const box = document.getElementById("prefForm");
+  box.innerHTML = prefFormHTML(pref);
+  box.classList.remove("hidden");
+  document.getElementById("prefFormCancel").onclick = () => box.classList.add("hidden");
+  document.getElementById("prefFormSave").onclick = () => savePref(pref);
+  box.scrollIntoView({behavior: "smooth"});
+}
+
+document.getElementById("newPrefBtn").onclick = () => openPrefForm(null);
+
+async function savePref(existing) {
+  const errEl = document.getElementById("prefFormError");
+  errEl.classList.add("hidden");
+  const notifyOnly = document.getElementById("f_notifyOnly").checked;
+  const body = {
+    google_link: document.getElementById("f_link").value.trim(),
+    restaurant_name: document.getElementById("f_name").value.trim(),
+    date_range_from: document.getElementById("f_from").value,
+    date_range_to: document.getElementById("f_to").value,
+    day_preference: Array.from(document.querySelectorAll(".f_day:checked")).map(el => parseInt(el.value, 10)),
+    party_size: parseInt(document.getElementById("f_party").value, 10) || 1,
+    notify_only: notifyOnly,
+    auto_book: notifyOnly ? false : document.getElementById("f_autoBook").checked,
+    guest_name: document.getElementById("f_guestName").value.trim(),
+    guest_email: document.getElementById("f_guestEmail").value.trim(),
+    guest_phone: document.getElementById("f_guestPhone").value.trim(),
+    special_notes: document.getElementById("f_notes").value.trim(),
+  };
+  if (!body.google_link || !body.date_range_from || !body.date_range_to) {
+    errEl.textContent = "URL, from date, and to date are required";
+    errEl.classList.remove("hidden");
+    return;
+  }
+  try {
+    if (existing) {
+      await api("/api/v1/preferences/" + existing.id, {method: "PATCH", body: JSON.stringify(body)});
+    } else {
+      await api("/api/v1/preferences", {method: "POST", body: JSON.stringify(body)});
+    }
+    document.getElementById("prefForm").classList.add("hidden");
+    loadPreferences();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove("hidden");
+  }
+}
+
+async function togglePrefActive(pref) {
+  await api("/api/v1/preferences/" + pref.id, {method: "PATCH", body: JSON.stringify({active: !pref.active})});
+  loadPreferences();
+}
+
+async function deletePref(pref) {
+  if (!confirm(`Delete "${pref.restaurant_name || pref.google_link}"? This can't be undone.`)) return;
+  await api("/api/v1/preferences/" + pref.id, {method: "DELETE"});
+  loadPreferences();
+}
+
+function openCredsForm(pref) {
+  const existingBox = document.getElementById("creds-" + pref.id);
+  if (existingBox) { existingBox.remove(); return; }
+  const box = document.createElement("div");
+  box.id = "creds-" + pref.id;
+  box.style.marginTop = "10px";
+  box.innerHTML = `
+    <label>recreation.gov email</label>
+    <input type="email" id="creds_user_${pref.id}">
+    <label>recreation.gov password</label>
+    <input type="password" id="creds_pass_${pref.id}">
+    <div class="error hidden" id="creds_err_${pref.id}"></div>
+    <div class="actions">
+      <button class="primary" id="creds_save_${pref.id}">Save credentials</button>
+    </div>`;
+  document.getElementById("card-" + pref.id).appendChild(box);
+  document.getElementById("creds_save_" + pref.id).onclick = async () => {
+    const username = document.getElementById("creds_user_" + pref.id).value.trim();
+    const password = document.getElementById("creds_pass_" + pref.id).value;
+    const errEl = document.getElementById("creds_err_" + pref.id);
+    try {
+      await api("/api/v1/recreation/credentials/password?preference_id=" + pref.id, {
+        method: "POST",
+        body: JSON.stringify({username, password}),
+      });
+      box.remove();
+      alert("Credentials saved (encrypted).");
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.classList.remove("hidden");
+    }
+  };
+}
+
+function prefCardHTML(pref) {
+  const days = (pref.day_preference || []).map(d => DAY_NAMES[d]).join(", ") || "Any day";
+  const mode = pref.notify_only ? "Notify only" : (pref.auto_book ? "Auto-book" : "Manual");
+  const isRecGov = (pref.google_link || "").includes("recreation.gov");
+  return `
+    <div class="card" id="card-${pref.id}">
+      <h3>${pref.restaurant_name || pref.google_link} ${pref.active ? "" : "<span class='status-tag'>Paused</span>"}</h3>
+      <div class="meta">${pref.google_link}</div>
+      <div class="meta">${(pref.date_range_from||"").slice(0,10)} → ${(pref.date_range_to||"").slice(0,10)} · ${days} · Party of ${pref.party_size}</div>
+      <div class="meta">Mode: ${mode}</div>
+      <div class="actions">
+        <button data-act="edit">Edit</button>
+        <button data-act="toggle">${pref.active ? "Pause" : "Resume"}</button>
+        ${isRecGov && !pref.notify_only ? `<button data-act="creds">Recreation.gov login</button>` : ""}
+        <button class="danger" data-act="delete">Delete</button>
+      </div>
+    </div>`;
+}
+
+async function loadPreferences() {
+  const list = document.getElementById("prefList");
+  try {
+    const prefs = await api("/api/v1/preferences");
+    if (!prefs || prefs.length === 0) {
+      list.innerHTML = `<div class="empty">No preferences yet. Click "+ New preference" to start monitoring something.</div>`;
+      return;
+    }
+    list.innerHTML = prefs.map(prefCardHTML).join("");
+    prefs.forEach(pref => {
+      const card = document.getElementById("card-" + pref.id);
+      card.querySelector('[data-act="edit"]').onclick = () => openPrefForm(pref);
+      card.querySelector('[data-act="toggle"]').onclick = () => togglePrefActive(pref);
+      card.querySelector('[data-act="delete"]').onclick = () => deletePref(pref);
+      const credsBtn = card.querySelector('[data-act="creds"]');
+      if (credsBtn) credsBtn.onclick = () => openCredsForm(pref);
+    });
+  } catch (e) {
+    list.innerHTML = `<div class="error">${e.message}</div>`;
+  }
+}
+
+// ---------- Notifications ----------
+function notifItemHTML(n) {
+  const when = new Date(n.created_at).toLocaleString();
+  return `
+    <div class="card ${n.read ? "" : "unread"}" id="notif-${n.id}">
+      <h3>${n.title}</h3>
+      <div class="meta">${n.message}</div>
+      <div class="meta">${when}</div>
+      ${n.read ? "" : `<div class="actions"><button data-act="read">Mark as read</button></div>`}
+    </div>`;
+}
+
+async function loadNotifications() {
+  const list = document.getElementById("notifList");
+  try {
+    const notifs = await api("/api/v1/notifications");
+    if (!notifs || notifs.length === 0) {
+      list.innerHTML = `<div class="empty">No notifications yet.</div>`;
+      return;
+    }
+    list.innerHTML = notifs.map(notifItemHTML).join("");
+    notifs.forEach(n => {
+      if (n.read) return;
+      const btn = document.querySelector("#notif-" + n.id + ' [data-act="read"]');
+      if (btn) btn.onclick = async () => {
+        await api("/api/v1/notifications/mark-as-read?id=" + n.id, {method: "POST"});
+        loadNotifications();
+        refreshUnreadCount();
+      };
+    });
+  } catch (e) {
+    list.innerHTML = `<div class="error">${e.message}</div>`;
+  }
+}
+
+document.getElementById("markAllReadBtn").onclick = async () => {
+  await api("/api/v1/notifications/mark-all-as-read", {method: "POST"});
+  loadNotifications();
+  refreshUnreadCount();
+};
+
+async function refreshUnreadCount() {
+  try {
+    const res = await api("/api/v1/notifications/unread-count");
+    const badge = document.getElementById("unreadBadge");
+    if (res.unread_count > 0) {
+      badge.textContent = res.unread_count;
+      badge.classList.remove("hidden");
+    } else {
+      badge.classList.add("hidden");
+    }
+  } catch (e) { /* ignore */ }
+}
+
+// ---------- Bookings ----------
+function bookingItemHTML(b) {
+  return `
+    <div class="card">
+      <h3>${(b.booking_date||"").slice(0,10)} at ${b.booking_time} <span class="status-tag ${b.status}">${b.status}</span></h3>
+      <div class="meta">Party of ${b.party_size}${b.confirmation_id ? " · Confirmation: " + b.confirmation_id : ""}</div>
+      ${b.notes ? `<div class="meta">${b.notes}</div>` : ""}
+    </div>`;
+}
+
+async function loadBookings() {
+  const list = document.getElementById("bookingList");
+  try {
+    const bookings = await api("/api/v1/bookings");
+    if (!bookings || bookings.length === 0) {
+      list.innerHTML = `<div class="empty">No bookings yet.</div>`;
+      return;
+    }
+    list.innerHTML = bookings.map(bookingItemHTML).join("");
+  } catch (e) {
+    list.innerHTML = `<div class="error">${e.message}</div>`;
+  }
+}
+
+// ---------- Live notifications via WebSocket ----------
+function connectWS() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(`${proto}//${location.host}/ws/notifications?token=${encodeURIComponent(token)}`);
+  ws.onopen = () => renderHeader(true);
+  ws.onclose = () => { renderHeader(false); };
+  ws.onerror = () => renderHeader(false);
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "notification") {
+      showToast(msg.data);
+      refreshUnreadCount();
+      if (!document.getElementById("tab-notifications").classList.contains("hidden")) loadNotifications();
+    }
+  };
+}
+
+function showToast(notif) {
+  const host = document.getElementById("toastHost");
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.innerHTML = `<h4>${notif.title}</h4><p>${notif.message}</p>`;
+  host.innerHTML = "";
+  host.appendChild(el);
+  setTimeout(() => el.remove(), 8000);
+}
+
+// ---------- Boot ----------
+async function enterApp() {
+  document.getElementById("authView").classList.add("hidden");
+  document.getElementById("appView").classList.remove("hidden");
+  renderHeader(false);
+  connectWS();
+  await loadPreferences();
+  await refreshUnreadCount();
+}
+
+(async function boot() {
+  if (!token) {
+    document.getElementById("authView").classList.remove("hidden");
+    return;
+  }
+  try {
+    await api("/api/v1/preferences");
+    await enterApp();
+  } catch (e) {
+    document.getElementById("authView").classList.remove("hidden");
+  }
+})();
+</script>
+</body>
+</html>
