@@ -52,6 +52,20 @@ type SiteAvailability struct {
 	AvailableDates map[string]bool // "2006-01-02" -> available
 }
 
+// SiteMatch identifies one site that satisfied a candidate check-in window.
+type SiteMatch struct {
+	SiteID   string
+	SiteName string
+}
+
+// AvailabilityResult is what CheckAvailability returns: matches grouped by
+// check-in date, plus how many distinct sites were examined in total across
+// the whole check (for reporting "N campsites checked", not just matches).
+type AvailabilityResult struct {
+	MatchesByDate map[string][]SiteMatch
+	SitesChecked  int
+}
+
 // CheckAvailability checks recreation.gov for campsites with a consecutive
 // run of nights matching the preference's day-of-week and length requirements.
 //
@@ -61,7 +75,7 @@ type SiteAvailability struct {
 // covered by the consecutive_days window rather than treated as separate
 // candidate start dates. ConsecutiveDays (default 1) is how many nights in a
 // row, starting on that day, must be available on the same site.
-func (rs *RecreationGovScraper) CheckAvailability(ctx context.Context, pref *models.UserPreference) (map[string][]string, error) {
+func (rs *RecreationGovScraper) CheckAvailability(ctx context.Context, pref *models.UserPreference) (*AvailabilityResult, error) {
 	facilityID, err := rs.ExtractFacilityID(pref.GoogleLink)
 	if err != nil {
 		return nil, err
@@ -75,6 +89,7 @@ func (rs *RecreationGovScraper) CheckAvailability(ctx context.Context, pref *mod
 	log.Printf("Checking recreation.gov availability for facility: %s (%d night(s) per stay)\n", facilityID, nights)
 
 	monthCache := make(map[string]map[string]SiteAvailability)
+	seenSiteIDs := make(map[string]bool)
 	getMonth := func(monthStart time.Time) (map[string]SiteAvailability, error) {
 		key := monthStart.Format("2006-01")
 		if cached, ok := monthCache[key]; ok {
@@ -85,30 +100,34 @@ func (rs *RecreationGovScraper) CheckAvailability(ctx context.Context, pref *mod
 			return nil, err
 		}
 		monthCache[key] = data
+		for id := range data {
+			seenSiteIDs[id] = true
+		}
 		return data, nil
 	}
 
-	availablesByDate := make(map[string][]string)
+	result := &AvailabilityResult{MatchesByDate: make(map[string][]SiteMatch)}
 
 	currentDate := pref.DateRangeFrom
 	for !currentDate.After(pref.DateRangeTo) {
 		if isStartOfPreferredRun(currentDate, pref.DayPreference) {
-			sites, err := rs.sitesAvailableFor(currentDate, nights, getMonth)
+			matches, err := rs.sitesAvailableFor(currentDate, nights, getMonth)
 			if err != nil {
 				log.Printf("Error checking availability starting %s: %v\n", currentDate.Format("2006-01-02"), err)
-			} else if len(sites) > 0 {
-				availablesByDate[currentDate.Format("2006-01-02")] = sites
+			} else if len(matches) > 0 {
+				result.MatchesByDate[currentDate.Format("2006-01-02")] = matches
 			}
 		}
 		currentDate = currentDate.AddDate(0, 0, 1)
 	}
 
-	return availablesByDate, nil
+	result.SitesChecked = len(seenSiteIDs)
+	return result, nil
 }
 
 // sitesAvailableFor merges whichever months the [start, start+nights) window
-// touches and returns the names of sites available for every night in it.
-func (rs *RecreationGovScraper) sitesAvailableFor(start time.Time, nights int, getMonth func(time.Time) (map[string]SiteAvailability, error)) ([]string, error) {
+// touches and returns the sites available for every night in it.
+func (rs *RecreationGovScraper) sitesAvailableFor(start time.Time, nights int, getMonth func(time.Time) (map[string]SiteAvailability, error)) ([]SiteMatch, error) {
 	merged := make(map[string]SiteAvailability)
 	seenMonths := make(map[string]bool)
 
@@ -140,11 +159,11 @@ func (rs *RecreationGovScraper) sitesAvailableFor(start time.Time, nights int, g
 	return findConsecutiveAvailability(merged, start, nights), nil
 }
 
-// findConsecutiveAvailability returns the names of sites available for every
-// one of the `nights` consecutive dates starting at `start`. Pure function,
+// findConsecutiveAvailability returns the sites available for every one of
+// the `nights` consecutive dates starting at `start`. Pure function,
 // independent of the network call, so it's directly testable.
-func findConsecutiveAvailability(sites map[string]SiteAvailability, start time.Time, nights int) []string {
-	var matched []string
+func findConsecutiveAvailability(sites map[string]SiteAvailability, start time.Time, nights int) []SiteMatch {
+	var matched []SiteMatch
 	for _, sa := range sites {
 		allAvailable := true
 		for i := 0; i < nights; i++ {
@@ -155,7 +174,7 @@ func findConsecutiveAvailability(sites map[string]SiteAvailability, start time.T
 			}
 		}
 		if allAvailable {
-			matched = append(matched, sa.SiteName)
+			matched = append(matched, SiteMatch{SiteID: sa.SiteID, SiteName: sa.SiteName})
 		}
 	}
 	return matched

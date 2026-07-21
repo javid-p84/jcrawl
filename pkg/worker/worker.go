@@ -25,6 +25,7 @@ var (
 type CheckWorker struct {
 	prefRepo  *db.PreferenceRepository
 	bookRepo  *db.BookingRepository
+	checkRepo *db.CheckRepository
 	checker   *restaurant.Checker
 	booker    *booker.Booker
 	notifier  *notification.Service
@@ -37,6 +38,7 @@ type CheckWorker struct {
 func NewCheckWorker(
 	prefRepo *db.PreferenceRepository,
 	bookRepo *db.BookingRepository,
+	checkRepo *db.CheckRepository,
 	checker *restaurant.Checker,
 	bookr *booker.Booker,
 	notifier *notification.Service,
@@ -44,13 +46,14 @@ func NewCheckWorker(
 	interval time.Duration,
 ) *CheckWorker {
 	return &CheckWorker{
-		prefRepo: prefRepo,
-		bookRepo: bookRepo,
-		checker:  checker,
-		booker:   bookr,
-		notifier: notifier,
-		crypto:   cryptoMgr,
-		interval: interval,
+		prefRepo:  prefRepo,
+		bookRepo:  bookRepo,
+		checkRepo: checkRepo,
+		checker:   checker,
+		booker:    bookr,
+		notifier:  notifier,
+		crypto:    cryptoMgr,
+		interval:  interval,
 	}
 }
 
@@ -119,7 +122,10 @@ func (w *CheckWorker) checkAll(ctx context.Context) {
 	wg.Wait()
 }
 
-// checkPreference checks availability for a single preference
+// checkPreference checks availability for a single preference and records a
+// PreferenceCheck history entry for every attempt — found, not found, or
+// errored — so users can review what happened on past checks, not just the
+// ones that produced a notification or booking.
 func (w *CheckWorker) checkPreference(ctx context.Context, pref *models.UserPreference) {
 	log.Printf("Checking preference: %s (%s)\n", pref.ID, pref.RestaurantName)
 
@@ -129,12 +135,14 @@ func (w *CheckWorker) checkPreference(ctx context.Context, pref *models.UserPref
 	}
 
 	// Get availability
-	availabilities, err := w.checker.CheckAvailability(ctx, pref)
+	result, err := w.checker.CheckAvailability(ctx, pref)
+	w.recordCheck(pref, result, err)
 	if err != nil {
 		log.Printf("Error checking availability for %s: %v\n", pref.ID, err)
 		return
 	}
 
+	availabilities := result.Availabilities
 	if len(availabilities) == 0 {
 		log.Printf("No availability found for preference %s\n", pref.ID)
 		return
@@ -152,6 +160,54 @@ func (w *CheckWorker) checkPreference(ctx context.Context, pref *models.UserPref
 	if pref.AutoBook && w.booker != nil {
 		w.handleAutoBooking(ctx, pref, availabilities)
 	}
+}
+
+// recordCheck persists a PreferenceCheck summarizing one CheckAvailability
+// call, regardless of outcome. Best-effort: a failure to save history is
+// logged but never blocks the rest of the check flow.
+func (w *CheckWorker) recordCheck(pref *models.UserPreference, result *models.CheckResult, checkErr error) {
+	if w.checkRepo == nil {
+		return
+	}
+
+	check := &models.PreferenceCheck{
+		PreferenceID: pref.ID,
+		UserID:       pref.UserID,
+		CheckedAt:    time.Now(),
+		Success:      checkErr == nil,
+	}
+	if checkErr != nil {
+		check.ErrorMessage = checkErr.Error()
+	} else if result != nil {
+		check.SitesChecked = result.SitesChecked
+		check.MatchesFound = len(result.Availabilities)
+		if best := bestMatch(result.Availabilities); best != nil {
+			check.BestMatchLabel = best.Time
+			bestDate := best.Date
+			check.BestMatchDate = &bestDate
+			check.BestMatchURL = best.Link
+		}
+	}
+
+	if err := w.checkRepo.CreateCheck(check); err != nil {
+		log.Printf("Error saving check history for %s: %v\n", pref.ID, err)
+	}
+}
+
+// bestMatch picks the most likely candidate among matches found in a check:
+// the one with the soonest check-in date. Returns nil if availabilities is
+// empty. Pure function, directly testable.
+func bestMatch(availabilities []models.Availability) *models.Availability {
+	if len(availabilities) == 0 {
+		return nil
+	}
+	best := availabilities[0]
+	for _, a := range availabilities[1:] {
+		if a.Date.Before(best.Date) {
+			best = a
+		}
+	}
+	return &best
 }
 
 // handleAutoBooking attempts to automatically book the first available slot

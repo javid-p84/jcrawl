@@ -98,12 +98,31 @@ func InitializeSchema(db *sql.DB) error {
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
 
+	-- One row per worker check of a preference, whether or not it found a
+	-- match, so users can review check history (not just events that
+	-- triggered a notification or booking).
+	CREATE TABLE IF NOT EXISTS preference_checks (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		preference_id UUID NOT NULL REFERENCES user_preferences(id) ON DELETE CASCADE,
+		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		checked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		success BOOLEAN NOT NULL,
+		error_message TEXT,
+		sites_checked INTEGER NOT NULL DEFAULT 0,
+		matches_found INTEGER NOT NULL DEFAULT 0,
+		best_match_label VARCHAR(255),
+		best_match_date DATE,
+		best_match_url TEXT
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_user_preferences_user_id ON user_preferences(user_id);
 	CREATE INDEX IF NOT EXISTS idx_booking_history_user_id ON booking_history(user_id);
 	CREATE INDEX IF NOT EXISTS idx_booking_history_preference_id ON booking_history(preference_id);
 	CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 	CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
 	CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, read);
+	CREATE INDEX IF NOT EXISTS idx_preference_checks_preference_id ON preference_checks(preference_id, checked_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_preference_checks_user_id ON preference_checks(user_id);
 	`
 
 	_, err := db.Exec(schema)

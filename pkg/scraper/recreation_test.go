@@ -89,7 +89,7 @@ func TestFindConsecutiveAvailability(t *testing.T) {
 		}},
 	}
 
-	got := findConsecutiveAvailability(sites, start, 3)
+	got := siteNames(findConsecutiveAvailability(sites, start, 3))
 	sort.Strings(got)
 	want := []string{"Site A"}
 	if !reflect.DeepEqual(got, want) {
@@ -97,11 +97,63 @@ func TestFindConsecutiveAvailability(t *testing.T) {
 	}
 
 	// With nights=1, both A and B should match (they're available on the 5th)
-	got1 := findConsecutiveAvailability(sites, start, 1)
+	got1 := siteNames(findConsecutiveAvailability(sites, start, 1))
 	sort.Strings(got1)
 	want1 := []string{"Site A", "Site B"}
 	if !reflect.DeepEqual(got1, want1) {
 		t.Errorf("findConsecutiveAvailability(nights=1) = %v, want %v", got1, want1)
+	}
+}
+
+func siteNames(matches []SiteMatch) []string {
+	names := make([]string, len(matches))
+	for i, m := range matches {
+		names[i] = m.SiteName
+	}
+	return names
+}
+
+// A 3-night stay that spans a month boundary (Aug 30 - Sep 1) must merge
+// data fetched from two separate months for the same site to find a match.
+func TestSitesAvailableFor_SpansMonthBoundary(t *testing.T) {
+	scraper := &RecreationGovScraper{}
+	start := mustDate(t, "2024-08-30")
+
+	augData := map[string]SiteAvailability{
+		"site-1": {SiteID: "site-1", SiteName: "Site One", AvailableDates: map[string]bool{
+			"2024-08-30": true, "2024-08-31": true,
+		}},
+	}
+	sepData := map[string]SiteAvailability{
+		"site-1": {SiteID: "site-1", SiteName: "Site One", AvailableDates: map[string]bool{
+			"2024-09-01": true,
+		}},
+	}
+
+	fetchCount := map[string]int{}
+	getMonth := func(monthStart time.Time) (map[string]SiteAvailability, error) {
+		key := monthStart.Format("2006-01")
+		fetchCount[key]++
+		switch key {
+		case "2024-08":
+			return augData, nil
+		case "2024-09":
+			return sepData, nil
+		default:
+			t.Fatalf("unexpected month requested: %s", key)
+			return nil, nil
+		}
+	}
+
+	matches, err := scraper.sitesAvailableFor(start, 3, getMonth)
+	if err != nil {
+		t.Fatalf("sitesAvailableFor: %v", err)
+	}
+	if len(matches) != 1 || matches[0].SiteID != "site-1" {
+		t.Errorf("expected site-1 to match across the month boundary, got %v", matches)
+	}
+	if fetchCount["2024-08"] != 1 || fetchCount["2024-09"] != 1 {
+		t.Errorf("expected exactly one fetch per distinct month, got %v", fetchCount)
 	}
 }
 

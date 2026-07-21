@@ -20,6 +20,16 @@ type Availability struct {
 	PartySize    int       `json:"party_size"`
 	Booked       bool      `json:"booked"`
 	BookedAt     time.Time `json:"booked_at,omitempty"`
+	SiteID       string    `json:"site_id,omitempty"` // Recreation.gov campsite ID, when applicable
+	Link         string    `json:"link,omitempty"`    // Direct link to this specific result (campsite page, or the booking page for restaurants)
+}
+
+// CheckResult is what a Checker.CheckAvailability call returns: the matches
+// found, plus how many sites/slots were examined to find them (for
+// check-history reporting, not just booking).
+type CheckResult struct {
+	Availabilities []Availability
+	SitesChecked   int
 }
 
 // BookingDetails contains the information needed to complete a reservation

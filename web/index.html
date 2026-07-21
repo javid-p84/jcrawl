@@ -116,6 +116,12 @@
   .status-tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); }
   .status-tag.booked { color: var(--success); border-color: var(--success); }
   .status-tag.failed { color: var(--danger); border-color: var(--danger); }
+
+  .history-scroll { overflow-x: auto; max-width: 100%; }
+  .history-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .history-table th, .history-table td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .history-table th { color: var(--muted); font-weight: 600; }
+  .history-table a { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -446,10 +452,72 @@ function prefCardHTML(pref) {
       <div class="actions">
         <button data-act="edit">Edit</button>
         <button data-act="toggle">${pref.active ? "Pause" : "Resume"}</button>
+        <button data-act="history">Check history</button>
         ${isRecGov && !pref.notify_only ? `<button data-act="creds">Recreation.gov login</button>` : ""}
         <button class="danger" data-act="delete">Delete</button>
       </div>
     </div>`;
+}
+
+function openHistory(pref) {
+  const existingBox = document.getElementById("history-" + pref.id);
+  if (existingBox) { existingBox.remove(); return; }
+  const box = document.createElement("div");
+  box.id = "history-" + pref.id;
+  box.style.marginTop = "10px";
+  box.innerHTML = `<div class="meta">Loading history…</div>`;
+  document.getElementById("card-" + pref.id).appendChild(box);
+  loadHistory(pref.id, box);
+}
+
+async function loadHistory(prefId, box) {
+  try {
+    const checks = await api("/api/v1/preferences/" + prefId + "/checks");
+    if (!checks || checks.length === 0) {
+      box.innerHTML = `<div class="meta">No checks recorded yet — the background worker checks every few minutes.</div>`;
+      return;
+    }
+    box.innerHTML = `
+      <div class="history-scroll">
+        <table class="history-table">
+          <thead>
+            <tr><th>When</th><th>Result</th><th>Sites checked</th><th>Matches</th><th>Most likely option</th></tr>
+          </thead>
+          <tbody>
+            ${checks.map(historyRowHTML).join("")}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="error">${e.message}</div>`;
+  }
+}
+
+function historyRowHTML(c) {
+  const when = new Date(c.checked_at).toLocaleString();
+  let result;
+  if (!c.success) {
+    result = `<span class="status-tag failed" title="${(c.error_message || "").replace(/"/g, '&quot;')}">⚠️ Error</span>`;
+  } else if (c.matches_found > 0) {
+    result = `<span class="status-tag booked">✅ Found</span>`;
+  } else {
+    result = `— None`;
+  }
+  let best = "—";
+  if (c.best_match_label) {
+    const dateLabel = c.best_match_date ? c.best_match_date.slice(0, 10) + " · " : "";
+    best = c.best_match_url
+      ? `<a href="${c.best_match_url}" target="_blank" rel="noopener">${dateLabel}${c.best_match_label}</a>`
+      : `${dateLabel}${c.best_match_label}`;
+  }
+  return `
+    <tr>
+      <td>${when}</td>
+      <td>${result}</td>
+      <td>${c.sites_checked}</td>
+      <td>${c.matches_found}</td>
+      <td>${best}</td>
+    </tr>`;
 }
 
 async function loadPreferences() {
@@ -466,6 +534,7 @@ async function loadPreferences() {
       card.querySelector('[data-act="edit"]').onclick = () => openPrefForm(pref);
       card.querySelector('[data-act="toggle"]').onclick = () => togglePrefActive(pref);
       card.querySelector('[data-act="delete"]').onclick = () => deletePref(pref);
+      card.querySelector('[data-act="history"]').onclick = () => openHistory(pref);
       const credsBtn = card.querySelector('[data-act="creds"]');
       if (credsBtn) credsBtn.onclick = () => openCredsForm(pref);
     });

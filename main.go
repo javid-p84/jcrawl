@@ -56,6 +56,7 @@ func main() {
 	prefRepo := db.NewPreferenceRepository(database)
 	bookRepo := db.NewBookingRepository(database)
 	notifRepo := db.NewNotificationRepository(database)
+	checkRepo := db.NewCheckRepository(database)
 
 	// Initialize authentication
 	authSvc := api.NewAuthService()
@@ -85,8 +86,8 @@ func main() {
 	if err != nil {
 		log.Printf("Warning: Failed to initialize booker: %v\n", err)
 	}
-	checkWorker := worker.NewCheckWorker(prefRepo, bookRepo, checker, bookr, notifService, cryptoMgr, 5*time.Minute)
-	apiHandler := api.NewHandler(userRepo, prefRepo, bookRepo, notifRepo, cryptoMgr, authSvc)
+	checkWorker := worker.NewCheckWorker(prefRepo, bookRepo, checkRepo, checker, bookr, notifService, cryptoMgr, 5*time.Minute)
+	apiHandler := api.NewHandler(userRepo, prefRepo, bookRepo, notifRepo, checkRepo, cryptoMgr, authSvc)
 
 	// Setup routes
 	router := mux.NewRouter()
@@ -107,6 +108,7 @@ func main() {
 	protected.HandleFunc("/preferences", apiHandler.GetPreferences).Methods("GET")
 	protected.HandleFunc("/preferences/{id}", apiHandler.UpdatePreference).Methods("PATCH")
 	protected.HandleFunc("/preferences/{id}", apiHandler.DeletePreference).Methods("DELETE")
+	protected.HandleFunc("/preferences/{id}/checks", apiHandler.GetPreferenceChecks).Methods("GET")
 
 	// Booking endpoints
 	protected.HandleFunc("/bookings", apiHandler.GetBookings).Methods("GET")

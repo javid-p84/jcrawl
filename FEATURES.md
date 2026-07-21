@@ -49,6 +49,17 @@ This only affects recreation.gov checks; restaurant reservations are single time
 - Each check updates `last_checked_at` on the preference regardless of outcome
 - Availability is matched against the preference's date range and day-of-week filter before anything else happens
 
+### Check history
+
+Every worker pass over a preference is recorded — found, not found, or errored — not just the ones that produced a notification or booking. Each record has:
+
+- Success/failure (and the error message, if it failed)
+- `sites_checked` — how many campsites/slots were examined (for recreation.gov, distinct sites seen across the months fetched; for restaurants, distinct dates queried)
+- `matches_found`
+- The most likely candidate among the matches (soonest check-in date), with a direct link — for recreation.gov, a link straight to that specific campsite's page
+
+View it in the web UI via the **"Check history"** button on each preference card, or `GET /api/v1/preferences/{id}/checks` (paginated, scoped to the requesting user).
+
 ## Supported Booking Platforms
 
 Detected automatically from the `google_link` URL:

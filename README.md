@@ -293,6 +293,17 @@ curl http://localhost:8080/api/v1/bookings \
 
 A booking only ever shows `status: "booked"` if the automation captured a real confirmation ID from the site — nothing is recorded as successful unless it actually happened.
 
+### 6. Review Check History for a Preference
+
+Every worker pass over a preference — found, not found, or errored — is recorded, not just the ones that triggered a notification or booking. In the web UI, click **"Check history"** on any preference card.
+
+```bash
+curl "http://localhost:8080/api/v1/preferences/PREF_ID/checks" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Each entry includes `sites_checked` (how many campsites/slots were examined), `matches_found`, and — if anything matched — `best_match_label`/`best_match_url` pointing at the most likely option (the match with the soonest check-in date).
+
 ## API Endpoints
 
 ### Authentication
@@ -304,6 +315,7 @@ A booking only ever shows `status: "booked"` if the automation captured a real c
 - `GET /api/v1/preferences` - List user's preferences
 - `PATCH /api/v1/preferences/<id>` - Update a preference (partial; only send fields you're changing). Setting `"active": false` pauses monitoring, `"active": true` resumes it.
 - `DELETE /api/v1/preferences/<id>` - Delete a preference
+- `GET /api/v1/preferences/<id>/checks` - Check history: every time the worker checked this preference (found or not), how many sites/slots were examined, and the most likely candidate (with a direct link), newest first. Paginated (`?limit=&offset=`).
 
 ### Bookings
 - `GET /api/v1/bookings` - List user's booking history

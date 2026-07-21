@@ -434,3 +434,71 @@ func (r *NotificationRepository) MarkAllAsRead(userID string) error {
 	)
 	return err
 }
+
+type CheckRepository struct {
+	db *sql.DB
+}
+
+func NewCheckRepository(db *sql.DB) *CheckRepository {
+	return &CheckRepository{db: db}
+}
+
+func (r *CheckRepository) CreateCheck(c *models.PreferenceCheck) error {
+	var errMsg, bestLabel, bestURL sql.NullString
+	if c.ErrorMessage != "" {
+		errMsg = sql.NullString{String: c.ErrorMessage, Valid: true}
+	}
+	if c.BestMatchLabel != "" {
+		bestLabel = sql.NullString{String: c.BestMatchLabel, Valid: true}
+	}
+	if c.BestMatchURL != "" {
+		bestURL = sql.NullString{String: c.BestMatchURL, Valid: true}
+	}
+
+	err := r.db.QueryRow(
+		`INSERT INTO preference_checks
+		(preference_id, user_id, checked_at, success, error_message, sites_checked, matches_found, best_match_label, best_match_date, best_match_url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING id`,
+		c.PreferenceID, c.UserID, c.CheckedAt, c.Success, errMsg, c.SitesChecked, c.MatchesFound,
+		bestLabel, c.BestMatchDate, bestURL,
+	).Scan(&c.ID)
+	return err
+}
+
+// GetChecksByPreferenceID returns check history for one preference, scoped by
+// owner, newest first.
+func (r *CheckRepository) GetChecksByPreferenceID(preferenceID, userID string, limit, offset int) ([]models.PreferenceCheck, error) {
+	rows, err := r.db.Query(
+		`SELECT id, preference_id, user_id, checked_at, success, error_message, sites_checked, matches_found,
+		 best_match_label, best_match_date, best_match_url
+		 FROM preference_checks WHERE preference_id = $1 AND user_id = $2
+		 ORDER BY checked_at DESC LIMIT $3 OFFSET $4`,
+		preferenceID, userID, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var checks []models.PreferenceCheck
+	for rows.Next() {
+		var c models.PreferenceCheck
+		var errMsg, bestLabel, bestURL sql.NullString
+		var bestDate sql.NullTime
+		if err := rows.Scan(
+			&c.ID, &c.PreferenceID, &c.UserID, &c.CheckedAt, &c.Success, &errMsg, &c.SitesChecked, &c.MatchesFound,
+			&bestLabel, &bestDate, &bestURL,
+		); err != nil {
+			return nil, err
+		}
+		c.ErrorMessage = errMsg.String
+		c.BestMatchLabel = bestLabel.String
+		c.BestMatchURL = bestURL.String
+		if bestDate.Valid {
+			c.BestMatchDate = &bestDate.Time
+		}
+		checks = append(checks, c)
+	}
+	return checks, rows.Err()
+}

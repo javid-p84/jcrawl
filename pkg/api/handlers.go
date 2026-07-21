@@ -22,16 +22,18 @@ type Handler struct {
 	prefRepo  *db.PreferenceRepository
 	bookRepo  *db.BookingRepository
 	notifRepo *db.NotificationRepository
+	checkRepo *db.CheckRepository
 	crypto    *crypto.Manager
 	auth      *AuthService
 }
 
-func NewHandler(userRepo *db.UserRepository, prefRepo *db.PreferenceRepository, bookRepo *db.BookingRepository, notifRepo *db.NotificationRepository, cryptoMgr *crypto.Manager, auth *AuthService) *Handler {
+func NewHandler(userRepo *db.UserRepository, prefRepo *db.PreferenceRepository, bookRepo *db.BookingRepository, notifRepo *db.NotificationRepository, checkRepo *db.CheckRepository, cryptoMgr *crypto.Manager, auth *AuthService) *Handler {
 	return &Handler{
 		userRepo:  userRepo,
 		prefRepo:  prefRepo,
 		bookRepo:  bookRepo,
 		notifRepo: notifRepo,
+		checkRepo: checkRepo,
 		crypto:    cryptoMgr,
 		auth:      auth,
 	}
@@ -420,6 +422,59 @@ func (h *Handler) DeletePreference(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetPreferenceChecks returns the check history for one preference (every
+// worker pass, not just ones that found a match), newest first.
+func (h *Handler) GetPreferenceChecks(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID := h.requireUserID(w, r)
+	if userID == "" {
+		return
+	}
+
+	prefID := mux.Vars(r)["id"]
+	if prefID == "" {
+		http.Error(w, "Preference ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Verify the preference exists and belongs to this user before returning
+	// history for it (a 404 here is clearer than a silently empty list).
+	if _, err := h.prefRepo.GetPreferenceByID(prefID, userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Preference not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to load preference", http.StatusInternalServerError)
+		return
+	}
+
+	limit := 20
+	offset := 0
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsedL, err := strconv.Atoi(l); err == nil && parsedL > 0 && parsedL <= 100 {
+			limit = parsedL
+		}
+	}
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if parsedO, err := strconv.Atoi(o); err == nil && parsedO >= 0 {
+			offset = parsedO
+		}
+	}
+
+	checks, err := h.checkRepo.GetChecksByPreferenceID(prefID, userID, limit, offset)
+	if err != nil {
+		http.Error(w, "Failed to fetch check history", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(checks)
 }
 
 // GetBookings retrieves all bookings for a user
