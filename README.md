@@ -232,6 +232,21 @@ curl -X POST "http://localhost:8080/api/v1/recreation/credentials/oauth?preferen
   }'
 ```
 
+**Recreation.gov permits example** (wilderness/overnight permits, e.g. `recreation.gov/permits/{id}/...`) — a different subsystem from campgrounds, with its own quota-based availability. `notify_only` is the only supported mode; auto-booking permits isn't implemented (see [FEATURES.md](FEATURES.md#recreationgov-permits) for why) and fails loudly rather than attempting it.
+```bash
+curl -X POST http://localhost:8080/api/v1/preferences \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "google_link": "https://www.recreation.gov/permits/445860/registration/detailed-availability?date=2026-07-21&type=overnight-permit",
+    "restaurant_name": "Mt. Whitney Overnight Permit",
+    "date_range_from": "2026-07-01",
+    "date_range_to": "2026-07-31",
+    "party_size": 2,
+    "notify_only": true
+  }'
+```
+
 ### 3. Manage Your Preferences
 
 ```bash

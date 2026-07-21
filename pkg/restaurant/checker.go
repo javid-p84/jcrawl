@@ -34,7 +34,13 @@ func NewChecker() *Checker {
 func (c *Checker) CheckAvailability(ctx context.Context, pref *models.UserPreference) (*models.CheckResult, error) {
 	log.Printf("Checking availability for: %s (%s)\n", pref.RestaurantName, pref.GoogleLink)
 
-	// Check if this is a recreation.gov link
+	// Permit URLs also contain "recreation.gov", so check that first — it's
+	// a distinct subsystem (entry-date quotas per division) from campgrounds.
+	if isPermitLink(pref.GoogleLink) {
+		return c.checkPermitAvailability(ctx, pref)
+	}
+
+	// Check if this is a recreation.gov campground link
 	if isRecreationGovLink(pref.GoogleLink) {
 		return c.checkRecreationGovAvailability(ctx, pref)
 	}
@@ -129,6 +135,59 @@ func (c *Checker) checkRecreationGovAvailability(ctx context.Context, pref *mode
 	return &models.CheckResult{Availabilities: availabilities, SitesChecked: result.SitesChecked}, nil
 }
 
+// checkPermitAvailability checks recreation.gov permit availability using
+// their API. Permit quotas are per calendar date and division (trailhead/
+// entry zone), not a multi-night stay tied to one site — consecutive_days
+// does not apply here.
+func (c *Checker) checkPermitAvailability(ctx context.Context, pref *models.UserPreference) (*models.CheckResult, error) {
+	permitScraper := scraper.NewPermitScraper()
+	result, err := permitScraper.CheckAvailability(ctx, pref)
+	if err != nil {
+		log.Printf("Error checking permit availability: %v\n", err)
+		return &models.CheckResult{}, err
+	}
+
+	var availabilities []models.Availability
+
+	for dateStr, matches := range result.MatchesByDate {
+		date, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			continue
+		}
+
+		for _, m := range matches {
+			avail := models.Availability{
+				PreferenceID: pref.ID,
+				Date:         date,
+				Time:         m.SiteName, // Division name (e.g. "Mt. Whitney Trail (Overnight)")
+				Nights:       1,
+				PartySize:    pref.PartySize,
+				Booked:       false,
+				SiteID:       m.SiteID, // Division ID
+				Link:         fmt.Sprintf("https://www.recreation.gov/permits/%s/registration/detailed-availability?date=%s&type=overnight-permit", permitIDFromLink(pref.GoogleLink), date.Format("2006-01-02")),
+			}
+			availabilities = append(availabilities, avail)
+		}
+	}
+
+	if len(availabilities) > 0 {
+		log.Printf("Found %d available permit slots for %s\n", len(availabilities), pref.RestaurantName)
+	}
+
+	return &models.CheckResult{Availabilities: availabilities, SitesChecked: result.SitesChecked}, nil
+}
+
+// permitIDFromLink extracts the permit ID for building result links; empty
+// string if somehow called with a non-permit URL (shouldn't happen given
+// checkPermitAvailability is only reached via isPermitLink).
+func permitIDFromLink(url string) string {
+	id, err := scraper.NewPermitScraper().ExtractPermitID(url)
+	if err != nil {
+		return ""
+	}
+	return id
+}
+
 // GetAvailabilitySlots fetches available time slots from the restaurant for a specific date
 func (c *Checker) GetAvailabilitySlots(ctx context.Context, googleLink string, targetDate time.Time, partySize int) ([]string, error) {
 	if c.browserPool == nil {
@@ -178,4 +237,10 @@ func matchesDayPreference(date time.Time, dayPreference []int) bool {
 // isRecreationGovLink checks if a URL is for recreation.gov
 func isRecreationGovLink(url string) bool {
 	return strings.Contains(url, "recreation.gov") || strings.Contains(url, "recreationgov")
+}
+
+// isPermitLink checks if a URL is for a recreation.gov permit page, as
+// distinct from a campground page — they use entirely different APIs.
+func isPermitLink(url string) bool {
+	return isRecreationGovLink(url) && strings.Contains(url, "/permits/")
 }

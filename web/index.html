@@ -441,19 +441,25 @@ function openCredsForm(pref) {
 function prefCardHTML(pref) {
   const days = (pref.day_preference || []).map(d => DAY_NAMES[d]).join(", ") || "Any day";
   const mode = pref.notify_only ? "Notify only" : (pref.auto_book ? "Auto-book" : "Manual");
-  const isRecGov = (pref.google_link || "").includes("recreation.gov");
+  const link = pref.google_link || "";
+  const isPermit = link.includes("recreation.gov") && link.includes("/permits/");
+  const isRecGovCampground = link.includes("recreation.gov") && !isPermit;
   const nights = pref.consecutive_days > 1 ? ` · ${pref.consecutive_days} consecutive nights` : "";
+  const permitNote = isPermit && pref.auto_book && !pref.notify_only
+    ? `<div class="meta" style="color:var(--danger);">⚠️ Auto-book isn't supported for permits (registration involves waivers/fees not automated here) — switch to notify_only.</div>`
+    : "";
   return `
     <div class="card" id="card-${pref.id}">
       <h3>${pref.restaurant_name || pref.google_link} ${pref.active ? "" : "<span class='status-tag'>Paused</span>"}</h3>
       <div class="meta">${pref.google_link}</div>
       <div class="meta">${(pref.date_range_from||"").slice(0,10)} → ${(pref.date_range_to||"").slice(0,10)} · ${days} · Party of ${pref.party_size}${nights}</div>
       <div class="meta">Mode: ${mode}</div>
+      ${permitNote}
       <div class="actions">
         <button data-act="edit">Edit</button>
         <button data-act="toggle">${pref.active ? "Pause" : "Resume"}</button>
         <button data-act="history">Check history</button>
-        ${isRecGov && !pref.notify_only ? `<button data-act="creds">Recreation.gov login</button>` : ""}
+        ${isRecGovCampground && !pref.notify_only ? `<button data-act="creds">Recreation.gov login</button>` : ""}
         <button class="danger" data-act="delete">Delete</button>
       </div>
     </div>`;

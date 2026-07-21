@@ -66,13 +66,25 @@ Detected automatically from the `google_link` URL:
 
 | Platform | Availability check | Auto-booking |
 |---|---|---|
-| **Recreation.gov** (campgrounds, day-use areas) | Public JSON API (no login required) | Browser automation, requires stored username/password |
+| **Recreation.gov campgrounds** (campsites, day-use areas) | Public JSON API (no login required) | Browser automation, requires stored username/password |
+| **Recreation.gov permits** (wilderness/overnight permits, e.g. `recreation.gov/permits/{id}/...`) | Public JSON API (no login required) | Not supported — refused with an explanation; use `notify_only` |
 | **Resy** | Browser scrape | Browser automation |
 | **OpenTable** | Browser scrape | Browser automation |
 | **Google Reserve** | Browser scrape | Browser automation |
 | Any other booking page | Generic pattern-matching scrape | Generic browser automation (best-effort form fill) |
 
 Browser-based checks and bookings run through headless Chrome (chromedp).
+
+### Recreation.gov permits
+
+Permits (`/permits/{id}/...` URLs) are a separate recreation.gov subsystem from campgrounds — different API, different data shape — detected and routed independently even though both are recreation.gov URLs:
+
+- Availability is a **quota headcount per entry date and division** (trailhead/zone), not a boolean per-site/per-night like campsites. A date matches if a division's remaining quota covers the preference's `party_size` (minimum 1).
+- `consecutive_days` doesn't apply to permits — a permit entry-date quota isn't a multi-night stay tied to one site, so each preferred day is checked independently.
+- The matched "site" is the division name (e.g. "Mt. Whitney Trail (Overnight)"), and the link points back to that specific date's registration page.
+- **Auto-booking is explicitly refused, not attempted.** Permit registration typically involves waivers, fees, and trip itineraries — meaningfully more complex than a restaurant or campsite reservation, and nothing about that flow has been observed or automated here. A permit preference with `auto_book: true` will fail loudly with an explanatory error rather than run a guessed, unverified flow against a real transaction. Use `notify_only` for permits and complete registration yourself.
+
+The endpoints used here (`/api/permitinyo/{id}/availabilityv2` and `/api/permitcontent/{id}`) were captured from real browser network traffic against a live permit page, not guessed from the campground API's shape — they're a genuinely different API. One quirk worth knowing: the availability endpoint only accepts date ranges that are exactly a calendar month (`start_date`/`end_date` = first/last day of the same month), so checks fetch one full month at a time and filter down to the preference's actual requested range, mirroring how the campground scraper already handles months.
 
 ## Recreation.gov Authentication
 

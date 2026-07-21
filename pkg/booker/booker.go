@@ -65,6 +65,8 @@ func (b *Booker) Book(ctx context.Context, googleLink string, details *models.Bo
 		booker = NewGoogleReserveBooker()
 	case "recreation-gov":
 		booker = NewRecreationGovBooker()
+	case "recreation-gov-permit":
+		booker = NewPermitBooker()
 	default:
 		booker = NewGenericBooker()
 	}
@@ -99,8 +101,12 @@ type PlatformBooker interface {
 
 // detectPlatform detects which booking platform the URL uses
 func detectPlatform(url string) (string, error) {
-	// Check URL patterns
+	// Check URL patterns. Permit URLs also contain "recreation.gov", so the
+	// permit check must come first — it's a distinct subsystem (fees,
+	// waivers, itineraries) from campground booking, not a variant of it.
 	switch {
+	case isPermitLink(url):
+		return "recreation-gov-permit", nil
 	case isRecreationGovLink(url):
 		return "recreation-gov", nil
 	case isResyLink(url):
@@ -117,6 +123,10 @@ func detectPlatform(url string) (string, error) {
 
 func isRecreationGovLink(url string) bool {
 	return contains(url, "recreation.gov") || contains(url, "recreationgov")
+}
+
+func isPermitLink(url string) bool {
+	return isRecreationGovLink(url) && contains(url, "/permits/")
 }
 
 func isResyLink(url string) bool {
