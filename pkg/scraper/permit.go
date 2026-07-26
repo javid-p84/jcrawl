@@ -77,15 +77,7 @@ func (ps *PermitScraper) CheckAvailability(ctx context.Context, pref *models.Use
 	// time for every month the preference's range touches, same approach
 	// as the campground scraper's month-by-month fetching.
 	availByDate := make(map[string]map[string]DivisionAvailability)
-	fetchedMonths := make(map[string]bool)
-	for d := pref.DateRangeFrom; !d.After(pref.DateRangeTo); d = d.AddDate(0, 1, 0) {
-		monthStart := time.Date(d.Year(), d.Month(), 1, 0, 0, 0, 0, d.Location())
-		monthKey := monthStart.Format("2006-01")
-		if fetchedMonths[monthKey] {
-			continue
-		}
-		fetchedMonths[monthKey] = true
-
+	for _, monthStart := range monthsBetween(pref.DateRangeFrom, pref.DateRangeTo) {
 		monthEnd := monthStart.AddDate(0, 1, -1) // last day of the month
 		monthData, err := ps.fetchAvailability(ctx, permitID, monthStart, monthEnd)
 		if err != nil {
@@ -201,6 +193,24 @@ func parsePermitAvailability(payload map[string]map[string]permitAvailabilityEnt
 		result[dateStr] = divMap
 	}
 	return result
+}
+
+// monthsBetween returns the first-of-month date for every distinct calendar
+// month touched by [from, to], inclusive, in order.
+//
+// The cursor advances from the 1st of a month, never from the original day-
+// of-month — advancing from an arbitrary day (e.g. Jan 31) can overflow past
+// the target month entirely (Jan 31 + 1 month normalizes to Mar 3, since Feb
+// has no 31st), silently skipping a whole month. Advancing from day 1 is
+// always safe since every month has a 1st.
+func monthsBetween(from, to time.Time) []time.Time {
+	var months []time.Time
+	cursor := time.Date(from.Year(), from.Month(), 1, 0, 0, 0, 0, from.Location())
+	for !cursor.After(to) {
+		months = append(months, cursor)
+		cursor = cursor.AddDate(0, 1, 0)
+	}
+	return months
 }
 
 // permitContentDivision is one entry in permitcontent's "divisions" map.

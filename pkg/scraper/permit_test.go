@@ -2,8 +2,54 @@ package scraper
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
+	"time"
 )
+
+func mustPermitDate(t *testing.T, s string) time.Time {
+	t.Helper()
+	d, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		t.Fatalf("bad date %q: %v", s, err)
+	}
+	return d
+}
+
+func TestMonthsBetween(t *testing.T) {
+	monthKeys := func(months []time.Time) []string {
+		keys := make([]string, len(months))
+		for i, m := range months {
+			keys[i] = m.Format("2006-01")
+		}
+		return keys
+	}
+
+	tests := []struct {
+		name       string
+		from, to   string
+		wantMonths []string
+	}{
+		{"day-1 aligned range (jcrawl's own README example)", "2026-07-01", "2026-10-01", []string{"2026-07", "2026-08", "2026-09", "2026-10"}},
+		{"single month", "2026-07-05", "2026-07-20", []string{"2026-07"}},
+		// Regression test: advancing from an arbitrary day-of-month (e.g. the
+		// 31st) can overflow past the target month when that month has fewer
+		// days (Jan 31 + 1 month normalizes to Mar 3, skipping February
+		// entirely). monthsBetween must not do this — every month the range
+		// touches must be returned.
+		{"31st crossing shorter months must not skip any month", "2026-01-31", "2026-03-01", []string{"2026-01", "2026-02", "2026-03"}},
+		{"same regression, different months", "2026-03-31", "2026-05-01", []string{"2026-03", "2026-04", "2026-05"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := monthKeys(monthsBetween(mustPermitDate(t, tt.from), mustPermitDate(t, tt.to)))
+			if !reflect.DeepEqual(got, tt.wantMonths) {
+				t.Errorf("monthsBetween(%s, %s) = %v, want %v", tt.from, tt.to, got, tt.wantMonths)
+			}
+		})
+	}
+}
 
 func TestExtractPermitID(t *testing.T) {
 	ps := NewPermitScraper()
