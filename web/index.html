@@ -627,6 +627,47 @@ async function loadBookings() {
   }
 }
 
+// ---------- Beep ----------
+// Generated with the Web Audio API so no external sound file is needed —
+// stays consistent with this UI being a single self-contained HTML file.
+let audioCtx = null;
+
+function initAudio() {
+  if (!audioCtx) {
+    const AudioCtor = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtor) audioCtx = new AudioCtor();
+  } else if (audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
+}
+// Browsers block audio until a user gesture; resume on the first click/tap
+// anywhere in the app so a beep triggered later (e.g. from an auto-login
+// session) isn't silently swallowed by the autoplay policy.
+document.addEventListener("click", () => {
+  if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+});
+
+function playBeep() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const tone = (start, duration, freq) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "square";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.3, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + duration);
+  };
+  // A big old alarm-clock-style beep-beep-BEEP
+  tone(now, 0.18, 880);
+  tone(now + 0.22, 0.18, 880);
+  tone(now + 0.44, 0.3, 660);
+}
+
 // ---------- Live notifications via WebSocket ----------
 function connectWS() {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -638,6 +679,7 @@ function connectWS() {
     const msg = JSON.parse(event.data);
     if (msg.type === "notification") {
       showToast(msg.data);
+      playBeep();
       refreshUnreadCount();
       if (!document.getElementById("tab-notifications").classList.contains("hidden")) loadNotifications();
     }
@@ -659,6 +701,7 @@ async function enterApp() {
   document.getElementById("authView").classList.add("hidden");
   document.getElementById("appView").classList.remove("hidden");
   renderHeader(false);
+  initAudio();
   connectWS();
   await loadPreferences();
   await refreshUnreadCount();
