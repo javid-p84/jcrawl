@@ -550,28 +550,32 @@ async function loadPreferences() {
 }
 
 // ---------- Notifications ----------
+// This view only ever shows unread notifications (fetched with
+// unread_only=true) — marking one as read removes it from the screen by
+// simply no longer matching that filter on the next reload. It's never
+// deleted; the full history (read and unread) is still in the database and
+// reachable via GET /api/v1/notifications (without unread_only).
 function notifItemHTML(n) {
   const when = new Date(n.created_at).toLocaleString();
   return `
-    <div class="card ${n.read ? "" : "unread"}" id="notif-${n.id}">
+    <div class="card unread" id="notif-${n.id}">
       <h3>${n.title}</h3>
       <div class="meta">${n.message}</div>
       <div class="meta">${when}</div>
-      ${n.read ? "" : `<div class="actions"><button data-act="read">Mark as read</button></div>`}
+      <div class="actions"><button data-act="read">Mark as read</button></div>
     </div>`;
 }
 
 async function loadNotifications() {
   const list = document.getElementById("notifList");
   try {
-    const notifs = await api("/api/v1/notifications");
+    const notifs = await api("/api/v1/notifications?unread_only=true");
     if (!notifs || notifs.length === 0) {
-      list.innerHTML = `<div class="empty">No notifications yet.</div>`;
+      list.innerHTML = `<div class="empty">You're all caught up — no unread notifications.</div>`;
       return;
     }
     list.innerHTML = notifs.map(notifItemHTML).join("");
     notifs.forEach(n => {
-      if (n.read) return;
       const btn = document.querySelector("#notif-" + n.id + ' [data-act="read"]');
       if (btn) btn.onclick = async () => {
         await api("/api/v1/notifications/mark-as-read?id=" + n.id, {method: "POST"});

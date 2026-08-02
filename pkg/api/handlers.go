@@ -524,8 +524,9 @@ func (h *Handler) GetNotifications(w http.ResponseWriter, r *http.Request) {
 			offset = parsedO
 		}
 	}
+	unreadOnly := r.URL.Query().Get("unread_only") == "true"
 
-	notifs, err := h.notifRepo.GetNotificationsByUserID(userID, limit, offset)
+	notifs, err := h.notifRepo.GetNotificationsByUserID(userID, limit, offset, unreadOnly)
 	if err != nil {
 		http.Error(w, "Failed to fetch notifications", http.StatusInternalServerError)
 		return

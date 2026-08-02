@@ -369,13 +369,20 @@ func (r *NotificationRepository) CreateNotification(notif *models.Notification) 
 	return err
 }
 
-func (r *NotificationRepository) GetNotificationsByUserID(userID string, limit int, offset int) ([]models.Notification, error) {
-	rows, err := r.db.Query(
-		`SELECT id, user_id, preference_id, booking_id, type, title, message,
+// GetNotificationsByUserID returns a user's notifications, newest first.
+// unreadOnly restricts to notifications not yet marked read — marking one as
+// read never deletes it, so it stays queryable via unreadOnly=false, it just
+// drops out of the unreadOnly=true view.
+func (r *NotificationRepository) GetNotificationsByUserID(userID string, limit int, offset int, unreadOnly bool) ([]models.Notification, error) {
+	query := `SELECT id, user_id, preference_id, booking_id, type, title, message,
 		 read, read_at, created_at, updated_at
-		 FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-		userID, limit, offset,
-	)
+		 FROM notifications WHERE user_id = $1`
+	if unreadOnly {
+		query += ` AND read = false`
+	}
+	query += ` ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+
+	rows, err := r.db.Query(query, userID, limit, offset)
 	if err != nil {
 		return nil, err
 	}

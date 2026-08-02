@@ -336,7 +336,7 @@ Each entry includes `sites_checked` (how many campsites/slots were examined), `m
 - `GET /api/v1/bookings` - List user's booking history
 
 ### Notifications
-- `GET /api/v1/notifications` - Get user's notifications (paginated)
+- `GET /api/v1/notifications` - Get user's notifications (paginated). Add `?unread_only=true` to get only unread ones — this is what the web UI's Notifications tab uses, so a notification disappears from that view once marked read without ever being deleted; the full history (read and unread) is always available by omitting the flag.
 - `GET /api/v1/notifications/unread-count` - Get count of unread notifications
 - `POST /api/v1/notifications/mark-as-read?id=<notif-id>` - Mark notification as read
 - `POST /api/v1/notifications/mark-all-as-read` - Mark all notifications as read

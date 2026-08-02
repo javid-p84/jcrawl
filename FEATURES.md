@@ -111,9 +111,9 @@ A preference is automatically deactivated after a successful auto-booking so it 
 
 ## Notifications
 
-Every meaningful event generates an in-app notification, stored permanently and delivered through multiple channels at once:
+Every meaningful event generates an in-app notification, stored permanently (marking one as read never deletes it) and delivered through multiple channels at once:
 
-- **WebSocket** — instant, real-time push to any connected client (`/ws/notifications?token=<jwt>`)
+- **WebSocket** — instant, real-time push to any connected client (`/ws/notifications?token=<jwt>`), paired with an audible beep (Web Audio API, no sound file) and a toast in the web UI
 - **Email** — via SMTP (Gmail or any provider), HTML formatted, with a link back to jcrawl
 - **SMS** — via Twilio (channel implemented; actual send call is a stub pending Twilio wiring)
 
@@ -126,8 +126,10 @@ Each channel is optional and auto-registers only if its environment variables ar
 - Check complete
 - Error
 
+**Read vs. unread:** the web UI's Notifications tab only shows unread notifications — marking one as read makes it disappear from that view, but it's never deleted; the complete history (read and unread) is always retrievable via the API.
+
 **API:**
-- `GET /api/v1/notifications` — paginated list
+- `GET /api/v1/notifications` — paginated list, full history by default; add `?unread_only=true` for just the unread ones (what the web UI uses)
 - `GET /api/v1/notifications/unread-count`
 - `POST /api/v1/notifications/mark-as-read?id=<id>`
 - `POST /api/v1/notifications/mark-all-as-read`
